@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>내전 밸런스 메이커</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0e1a;
+  --surface:   #111625;
+  --card:      #161d30;
+  --border:    #252f4a;
+  --gold:      #c8a84b;
+  --gold-l:    #e8c86b;
+  --text:      #dde4f0;
+  --muted:     #7a8aaa;
+  --IRON:      #8d8d8d;
+  --BRONZE:    #cd7f32;
+  --SILVER:    #a8a9ad;
+  --GOLD:      #d4af37;
+  --PLATINUM:  #009688;
+  --EMERALD:   #3ecf78;
+  --DIAMOND:   #4fc3f7;
+  --MASTER:    #ab47bc;
+  --GRANDMASTER: #ef5350;
+  --CHALLENGER:  #ffe066;
+}
+
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 80px;
+}
+
+/* ── HEADER ── */
+header {
+  background: linear-gradient(135deg, #111625 0%, #1b2c50 100%);
+  border-bottom: 2px solid var(--gold);
+  padding: 22px 24px;
+  text-align: center;
+}
+header h1 { font-size: 1.75rem; color: var(--gold-l); font-weight: 700; letter-spacing: 2px; }
+header p  { color: var(--muted); font-size: 0.82rem; margin-top: 4px; }
+
+/* ── LAYOUT ── */
+.wrap { max-width: 1440px; margin: 0 auto; padding: 0 16px; }
+section { margin-top: 28px; }
+
+.sec-title {
+  font-size: 1rem; font-weight: 700; color: var(--gold);
+  border-left: 3px solid var(--gold);
+  padding-left: 10px; margin-bottom: 14px;
+}
+
+/* ── INPUT ── */
+.input-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.input-row input {
+  flex: 1; min-width: 240px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 14px; color: var(--text); font-size: 0.95rem;
+  font-family: inherit; outline: none; transition: border-color .2s;
+}
+.input-row input:focus { border-color: var(--gold); }
+.input-row input::placeholder { color: var(--muted); }
+
+.btn {
+  padding: 10px 18px; border: none; border-radius: 6px;
+  font-size: 0.9rem; font-weight: 600; cursor: pointer;
+  transition: all .2s; font-family: inherit;
+}
+.btn-gold  { background: var(--gold); color: #0a0e1a; }
+.btn-gold:hover { background: var(--gold-l); }
+.btn-gold:disabled { opacity: .45; cursor: not-allowed; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+.btn-ghost:hover { border-color: var(--muted); color: var(--text); }
+.btn-green { background: #245c3a; color: #7af0a8; font-size: 1rem; padding: 11px 28px; }
+.btn-green:hover { background: #2e7a4e; }
+.btn-rm    { background: transparent; border: 1px solid #555; color: #888; padding: 3px 9px; font-size: 0.78rem; border-radius: 4px; }
+.btn-rm:hover { border-color: #ef5350; color: #ef5350; }
+.btn-discord { background: #5865F2; color: white; margin-left: 10px; font-size: 0.82rem; padding: 6px 12px; }
+.btn-discord:hover { background: #4752C4; }
+
+.err { color: #ef5350; font-size: 0.82rem; margin-top: 6px; min-height: 18px; }
+
+/* ── MAIN GRID ── */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  gap: 20px; align-items: start;
+}
+@media (max-width: 960px) { .main-grid { grid-template-columns: 1fr; } }
+
+/* ── PLAYER CARDS ── */
+.players-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.empty-state {
+  color: var(--muted); font-size: 0.9rem;
+  padding: 40px 20px; text-align: center; line-height: 1.8;
+  border: 1px dashed var(--border); border-radius: 10px;
+}
+
+.p-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px; position: relative;
+  transition: border-color .2s;
+}
+.p-card.sel { border-color: var(--gold); }
+
+.p-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.p-icon {
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--border); object-fit: cover; flex-shrink: 0;
+}
+.p-name { font-weight: 700; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-sub  { font-size: 0.72rem; color: var(--muted); }
+
+.tier-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 0.78rem; font-weight: 700; margin: 2px 0;
+}
+.lane-tag {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-size: 0.75rem; font-weight: 600;
+  background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+  margin-left: 4px;
+}
+.stats-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 8px; font-size: 0.78rem; color: var(--muted);
+}
+.p-score { font-size: 1.05rem; font-weight: 700; color: var(--gold); }
+.card-btns { position: absolute; top: 8px; right: 8px; }
+
+/* ── CHAMPION ICONS ── */
+.champ-row { display: flex; gap: 6px; margin-top: 8px; }
+.champ-wrap {
+  position: relative; flex-shrink: 0;
+  width: 40px; cursor: default;
+}
+.champ-wrap img {
+  width: 40px; height: 40px; border-radius: 6px;
+  border: 1px solid var(--border); display: block;
+  object-fit: cover;
+}
+.champ-lv {
+  position: absolute; bottom: -2px; right: -2px;
+  background: rgba(10, 14, 26, 0.9); border: 1px solid var(--gold);
+  border-radius: 3px; font-size: 0.6rem; font-weight: 700;
+  padding: 0 2px; line-height: 12px; color: var(--gold);
+  z-index: 2;
+}
+.champ-tooltip {
+  display: none; position: absolute; bottom: 110%; left: 50%;
+  transform: translateX(-50%);
+  background: #0a0e1a; border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px;
+  font-size: 0.72rem; white-space: nowrap;
+  color: var(--text); z-index: 10;
+}
+.champ-wrap:hover .champ-tooltip { display: block; }
+
+/* ── MATCH HISTORY ── */
+.matches-toggle {
+  width: 100%; background: var(--surface); border: none;
+  color: var(--muted); font-size: 0.78rem; font-family: inherit;
+  padding: 6px 10px; cursor: pointer; text-align: left;
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 8px; border-radius: 6px; transition: background .2s;
+}
+.matches-toggle:hover { background: #1c2540; color: var(--text); }
+.matches-list { margin-top: 6px; display: none; }
+.matches-list.open { display: block; }
+.match-row {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 2px; border-bottom: 1px solid #1c2438; font-size: 0.74rem;
+}
+.match-champ { width: 28px; height: 28px; border-radius: 4px; flex-shrink: 0; }
+.match-wl { width: 20px; text-align: center; font-weight: 700; font-size: 0.72rem; flex-shrink: 0; }
+.match-wl.w { color: #4fc3f7; }
+.match-wl.l { color: #ef5350; }
+.match-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.match-kda { color: var(--gold); font-weight: 700; flex-shrink: 0; }
+.match-meta { color: var(--muted); flex-shrink: 0; }
+
+/* ── MATCH ITEMS ── */
+.match-items { display: flex; gap: 2px; margin-top: 4px; padding-left: 33px; }
+.match-item { 
+  width: 18px; height: 18px; border-radius: 2px; 
+  border: 1px solid var(--border); background: var(--bg);
+}
+
+.tl-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  font-size: 0.68rem; padding: 1px 5px; border-radius: 3px; cursor: pointer;
+  flex-shrink: 0; font-family: inherit;
+}
+.tl-btn:hover { border-color: var(--gold); color: var(--gold); }
+/* 타임라인 */
+.tl-section {
+  display: none; background: var(--bg); border-radius: 6px;
+  padding: 6px 8px; margin: 2px 0 4px; border: 1px solid var(--border);
+}
+.tl-section.open { display: block; }
+.tl-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 0.72rem; }
+.tl-min { color: var(--gold); font-weight: 700; width: 26px; flex-shrink: 0; }
+.tl-icon { width: 20px; height: 20px; border-radius: 3px; flex-shrink: 0; }
+.tl-label { color: var(--muted); }
+
+/* ── CHART CARD ── */
+.chart-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+  display: flex; flex-direction: column;
+}
+.chart-card h3 { font-size: 0.9rem; color: var(--gold); margin-bottom: 12px; }
+.chart-container { position: relative; width: 100%; }
+
+/* ── LANE RANKINGS ── */
+.lanes-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+@media (max-width: 900px) { .lanes-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) { .lanes-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.lane-col {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+}
+.lane-head {
+  background: var(--surface); padding: 8px 12px;
+  font-weight: 700; font-size: 0.88rem; text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.lane-row {
+  padding: 8px 12px; border-bottom: 1px solid #1c2438;
+  display: flex; align-items: center; gap: 6px;
+}
+.lane-row:last-child { border-bottom: none; }
+.lane-num { font-size: 0.75rem; color: var(--muted); font-weight: 700; width: 14px; flex-shrink: 0; }
+.lane-info { flex: 1; min-width: 0; }
+.lane-pname { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lane-tier  { font-size: 0.72rem; }
+.lane-score { font-size: 0.78rem; font-weight: 700; color: var(--gold); }
+.lane-empty { padding: 12px; text-align: center; color: var(--muted); font-size: 0.8rem; }
+
+/* ── BALANCE ── */
+.toggle-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.p-toggle {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 12px;
+  font-size: 0.83rem; color: var(--muted); cursor: pointer;
+  user-select: none; transition: all .2s;
+}
+.p-toggle.on { border-color: var(--gold); color: var(--text); background: #1a2c48; }
+
+.balance-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.sel-count { font-size: 0.82rem; color: var(--muted); }
+.sel-count.warn { color: #ef5350; }
+
+/* ── TEAMS ── */
+.teams-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
+}
+@media (max-width: 600px) { .teams-grid { grid-template-columns: 1fr; } }
+
+.team-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+}
+.team-head {
+  padding: 10px 16px; font-weight: 700; font-size: 0.92rem;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.t1 .team-head { background: #142040; border-bottom: 2px solid #4fc3f7; }
+.t2 .team-head { background: #2a1010; border-bottom: 2px solid #ef5350; }
+
+.team-player {
+  padding: 10px 14px; border-bottom: 1px solid #1c2438;
+  display: flex; align-items: center; gap: 10px;
+}
+.team-player:last-child { border-bottom: none; }
+.team-icon { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); }
+.team-player-info { flex: 1; min-width: 0; }
+.team-player-name { font-size: 0.85rem; font-weight: 600; }
+.team-player-tier { font-size: 0.75rem; }
+.team-player-score { font-size: 0.82rem; font-weight: 700; color: var(--gold); text-align: right; }
+
+.team-foot {
+  padding: 8px 16px; background: var(--surface);
+  font-size: 0.82rem; display: flex; justify-content: space-between; color: var(--muted);
+}
+
+.diff-banner {
+  grid-column: 1 / -1;
+  text-align: center; padding: 10px;
+  background: var(--surface); border-radius: 8px;
+  font-size: 0.88rem; color: var(--muted);
+}
+
+/* ── MISC ── */
+.spinner {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid #2a3550; border-top-color: var(--gold);
+  border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── SAVED SUMMONERS ── */
+.saved-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.saved-item {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.saved-item-info { min-width: 0; flex: 1; }
+.saved-item-name { font-weight: 600; font-size: 0.83rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.saved-item-meta { font-size: 0.7rem; }
+.btn-icon {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  padding: 3px 8px; font-size: 0.82rem; border-radius: 4px; cursor: pointer;
+  transition: all .2s; font-family: inherit;
+}
+.btn-icon:hover { border-color: var(--gold); color: var(--gold); }
+.btn-icon:disabled { opacity: .4; cursor: not-allowed; }
+
+.loading-box {
+  text-align: center; color: var(--muted); padding: 30px;
+  font-size: 0.9rem;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚔ 내전 밸런스 메이커</h1>
+  <p>라이엇 계정 정보 기반 · 라인별 티어 순위 · 자동 팀 구성</p>
+</header>
+
+<div class="wrap">
+
+  <!-- ── 입력 ── -->
+  <section>
+    <div class="sec-title">플레이어 추가</div>
+    <div class="input-row">
+      <input id="riotInput" type="text" placeholder="닉네임#태그  (예: Hide on bush#KR1)" />
+      <button class="btn btn-gold" id="addBtn" onclick="addPlayer()">추가</button>
+      <button class="btn btn-ghost" onclick="clearAll()">전체 삭제</button>
+    </div>
+    <div class="err" id="inputErr"></div>
+  </section>
+
+  <!-- ── 저장된 소환사 ── -->
+  <section id="savedSection" style="display:none">
+    <div class="sec-title" style="display:flex;align-items:center;gap:12px">
+      저장된 소환사
+      <span style="color:var(--muted);font-weight:400;font-size:0.78rem">캐시에서 바로 불러오기</span>
+      <button class="btn-icon" id="refreshAllBtn" onclick="refreshAllSaved()" style="margin-left:auto;padding:4px 12px;font-size:0.78rem">
+        ↻ 전체 새로고침
+      </button>
+    </div>
+    <div class="saved-list" id="savedList"></div>
+  </section>
+
+  <!-- ── 플레이어 목록 + 차트 ── -->
+  <section>
+    <div class="sec-title">
+      플레이어 목록
+      <span id="pCount" style="color:var(--muted);font-weight:400;font-size:0.85rem;"></span>
+    </div>
+    <div class="main-grid">
+      <div>
+        <div class="empty-state" id="emptyState">
+          아직 추가된 플레이어가 없습니다<br>
+          위에서 닉네임#태그 형식으로 입력하세요
+        </div>
+        <div id="playersGrid" class="players-grid"></div>
+      </div>
+      <div class="chart-card" id="chartCard" style="display:none">
+        <h3>파워 그래프 (최고 티어 기준)</h3>
+        <div class="chart-container">
+          <canvas id="scoreChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 라인별 순위 ── -->
+  <section id="laneSection" style="display:none">
+    <div class="sec-title">라인별 티어 순위</div>
+    <div class="lanes-grid">
+      <div class="lane-col" id="lane-TOP">    <div class="lane-head">탑</div></div>
+      <div class="lane-col" id="lane-JUNGLE"> <div class="lane-head">정글</div></div>
+      <div class="lane-col" id="lane-MIDDLE"> <div class="lane-head">미드</div></div>
+      <div class="lane-col" id="lane-BOTTOM"> <div class="lane-head">원딜</div></div>
+      <div class="lane-col" id="lane-UTILITY"><div class="lane-head">서포터</div></div>
+    </div>
+  </section>
+
+  <!-- ── 팀 구성 ── -->
+  <section id="balanceSection" style="display:none">
+    <div class="sec-title">팀 자동 구성</div>
+    <p style="color:var(--muted);font-size:0.82rem;margin-bottom:12px">
+      참여할 플레이어를 선택하세요. 짝수 인원이어야 합니다.
+    </p>
+    <div class="toggle-grid" id="toggleGrid"></div>
+    <div class="balance-controls">
+      <button class="btn btn-green" onclick="balanceTeams('balance')">⚖ 밸런스 팀 짜기</button>
+      <button class="btn btn-ghost" style="padding:11px 18px" onclick="balanceTeams('random')">🎲 완전 랜덤</button>
+      <button class="btn btn-ghost" style="padding:11px 18px" onclick="balanceTeams('random_lane')">🔀 랜덤 + 라인배정</button>
+      <span class="sel-count" id="selCount"></span>
+    </div>
+    <div id="teamsResult"></div>
+  </section>
+
+</div><!-- /wrap -->
+
+<script>
+// ── 상수 ──────────────────────────────────────────────────────────
+const TIER_KO = {
+  IRON:'아이언', BRONZE:'브론즈', SILVER:'실버', GOLD:'골드',
+  PLATINUM:'플래티넘', EMERALD:'에메랄드', DIAMOND:'다이아',
+  MASTER:'마스터', GRANDMASTER:'그랜드마스터', CHALLENGER:'챌린저',
+};
+const RANK_KO  = { I:'1', II:'2', III:'3', IV:'4' };
+const LANE_KO  = { TOP:'탑', JUNGLE:'정글', MIDDLE:'미드', BOTTOM:'원딜', UTILITY:'서포터', UNKNOWN:'미정' };
+const LANES    = ['TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY'];
+const T_COLOR  = {
+  IRON:'#8d8d8d', BRONZE:'#cd7f32', SILVER:'#a8a9ad', GOLD:'#d4af37',
+  PLATINUM:'#009688', EMERALD:'#3ecf78', DIAMOND:'#4fc3f7',
+  MASTER:'#ab47bc', GRANDMASTER:'#ef5350', CHALLENGER:'#ffe066',
+};
+
+// ── 상태 ──────────────────────────────────────────────────────────
+let players  = [];    // 전체 플레이어 배열
+let selected = new Set(); // displayName 집합
+let chart    = null;
+
+// ── 헬퍼 ──────────────────────────────────────────────────────────
+function tc(tier) { return T_COLOR[tier] || '#666'; }
+
+function tierLabel(entry) {
+  if (!entry) return '언랭';
+  const { tier, rank, lp } = entry;
+  if (['MASTER','GRANDMASTER','CHALLENGER'].includes(tier))
+    return `${TIER_KO[tier]} ${lp}LP`;
+  return `${TIER_KO[tier]} ${RANK_KO[rank]} (${lp}LP)`;
+}
+
+function esc(s) { return s.replace(/'/g, "\\'"); }
+
+// ── 플레이어 추가 ──────────────────────────────────────────────────
+async function addPlayer() {
+  const input  = document.getElementById('riotInput');
+  const btn    = document.getElementById('addBtn');
+  const errEl  = document.getElementById('inputErr');
+  const val    = input.value.trim();
+  errEl.textContent = '';
+
+  if (!val) { errEl.textContent = '닉네임#태그를 입력하세요'; return; }
+  if (!val.includes('#')) { errEl.textContent = '형식: 닉네임#태그 (예: Hide on bush#KR1)'; return; }
+  if (players.find(p => p.displayName.toLowerCase() === val.toLowerCase())) {
+    errEl.textContent = '이미 추가된 플레이어입니다'; return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 조회 중…';
+
+  try {
+    const res  = await fetch(`/api/player/${encodeURIComponent(val)}`);
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || '오류 발생'; return; }
+    players.push(data);
+    selected.add(data.displayName);
+    input.value = '';
+    renderAll();
+    loadSavedPlayers();
+  } catch (e) {
+    errEl.textContent = '서버 연결 오류: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '추가';
+  }
+}
+
+function removePlayer(dn) {
+  players = players.filter(p => p.displayName !== dn);
+  selected.delete(dn);
+  renderAll();
+  loadSavedPlayers();
+}
+
+function clearAll() {
+  if (!players.length) return;
+  if (!confirm('모든 플레이어를 삭제하시겠습니까?')) return;
+  players = []; selected.clear(); renderAll();
+}
+
+// ── 전체 렌더 ──────────────────────────────────────────────────────
+function renderAll() {
+  renderCards();
+  renderChart();
+  renderLanes();
+  renderToggles();
+  updateSelCount();
+  document.getElementById('pCount').textContent = players.length ? `(${players.length}명)` : '';
+  document.getElementById('laneSection').style.display    = players.length   ? '' : 'none';
+  document.getElementById('balanceSection').style.display = players.length >= 2 ? '' : 'none';
+  document.getElementById('teamsResult').innerHTML = '';
+}
+
+// ── 플레이어 카드 ──────────────────────────────────────────────────
+function renderCards() {
+  const grid  = document.getElementById('playersGrid');
+  const empty = document.getElementById('emptyState');
+  const chart = document.getElementById('chartCard');
+
+  if (!players.length) {
+    grid.innerHTML = '';
+    empty.style.display = '';
+    chart.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  chart.style.display = '';
+
+  const sorted = [...players].sort((a, b) => b.score - a.score);
+
+  grid.innerHTML = sorted.map(p => {
+    const rank  = p.highestRank;
+    const tier  = rank?.tier || null;
+    const color = tc(tier);
+    const isSel = selected.has(p.displayName);
+    const wr    = rank?.winRate;
+    const wrColor = wr >= 55 ? '#3ecf78' : wr >= 50 ? '#dde4f0' : '#ef5350';
+
+    return `
+    <div class="p-card${isSel ? ' sel' : ''}">
+      <div class="p-card-top">
+        <img class="p-icon" src="${p.iconUrl}"
+          onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/profileicon/29.png'" alt="">
+        <div style="min-width:0">
+          <div class="p-name" title="${p.displayName}">${p.gameName}${p.fromCache ? `<span style="font-size:0.58rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle" title="캐시됨: ${p.cachedAt}">캐시</span>` : ''}</div>
+          <div class="p-sub">Lv.${p.level} · #${p.tagLine}</div>
+        </div>
+        <div class="p-score" style="margin-left:auto;font-size:1.1rem;font-weight:700;color:var(--gold)">${p.score.toLocaleString()}</div>
+      </div>
+
+      ${rank ? `
+        <div style="margin-bottom:8px">
+          <span class="tier-badge" style="background:${color}22;color:${color}">
+            ${tierLabel(rank)}
+          </span>
+          <span style="font-size:.72rem;color:var(--muted)"> ${rank.queueType}</span>
+        </div>
+      ` : `
+        <div style="color:var(--muted);font-size:.82rem;margin:4px 0">언랭크</div>
+      `}
+
+      ${(() => {
+        const uid = `pl${players.indexOf(p)}`;
+        const totalScan = p.totalMatches || 30;
+        const laneOrder = ['TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY'];
+        
+        // 1. 라인별 상세
+        const laneChamps = {};
+        (p.recentMatches || []).forEach(m => {
+          if (!m.lane || m.lane === '?') return;
+          const enKey = Object.keys(LANE_KO).find(k => LANE_KO[k] === m.lane);
+          if (enKey) {
+            if (!laneChamps[enKey]) laneChamps[enKey] = {};
+            laneChamps[enKey][m.champion] = (laneChamps[enKey][m.champion] || 0) + 1;
+          }
+        });
+
+        const laneRows = laneOrder.map(lane => {
+          const stats = p.laneStats?.[lane];
+          if (!stats || stats.n === 0) return '';
+          const ratio = (stats.n / totalScan * 100).toFixed(0);
+          const wrVal = (stats.w / stats.n * 100).toFixed(0);
+          const c = wrVal >= 55 ? '#3ecf78' : wrVal >= 50 ? '#dde4f0' : '#ef5350';
+          const top3 = Object.entries(laneChamps[lane] || {}).sort((a,b)=>b[1]-a[1]).slice(0,3);
+          const icons = top3.map(([ch, cnt]) => `
+            <div class="champ-wrap" style="width:24px">
+              <img src="https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/${ch}_0.jpg"
+                onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/champion/${ch}.png'"
+                style="width:24px;height:24px;border-radius:3px;border:1px solid var(--border)" alt="${ch}">
+              <span class="champ-lv" style="font-size:0.5rem">${cnt}</span>
+            </div>`).join('');
+
+          return `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:4px">
+            <span style="font-size:0.75rem;font-weight:700;width:35px;color:var(--gold)">${LANE_KO[lane]}</span>
+            <div style="flex:1;font-size:0.68rem;color:var(--muted)">
+              ${stats.n}판 (${ratio}%) · 승률 <span style="color:${c}">${wrVal}%</span>
+            </div>
+            <div style="display:flex;gap:3px">${icons}</div>
+          </div>`;
+        }).join('');
+
+        const laneHtml = laneRows ? `<div style="margin-top:16px"><div style="font-size:0.7rem;color:var(--muted);margin-bottom:6px;font-weight:700">라인별 상세 (최근 ${totalScan}판)</div>${laneRows}</div>` : '';
+
+        // 2. 시즌 모스트
+        let seasonMostHtml = '';
+        if (p.seasonMost?.length) {
+          const rows = p.seasonMost.map(c => {
+            const wc = c.winRate >= 55 ? '#3ecf78' : c.winRate >= 50 ? '#dde4f0' : '#ef5350';
+            const kc = c.kda >= 4 ? '#3ecf78' : c.kda >= 2.5 ? '#d4af37' : '#ef5350';
+            return `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;background:rgba(255,255,255,0.02);padding:3px 6px;border-radius:4px">
+              <img src="${c.imgUrl}" style="width:28px;height:28px;border-radius:4px;border:1px solid var(--border)" alt="${c.name}" onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/profileicon/29.png'">
+              <div style="flex:1;font-size:0.68rem">
+                <div style="font-weight:700;font-size:0.72rem">${c.name}</div>
+                <div style="color:var(--muted)">${c.games}판 · 승률 <span style="color:${wc}">${c.winRate}%</span></div>
+              </div>
+              <div style="text-align:right;font-size:0.68rem;color:${kc};font-weight:700">KDA ${c.kda}</div>
+            </div>`;
+          }).join('');
+          seasonMostHtml = `<div style="margin-top:16px"><div style="font-size:0.7rem;color:var(--muted);margin-bottom:6px;font-weight:700">시즌 모스트 (최근 ${totalScan}판)</div>${rows}</div>`;
+        }
+
+        // 3. 전체 숙련도
+        const masteryHtml = p.topChamps?.length ? `
+          <div style="margin-top:16px">
+            <div style="font-size:0.7rem;color:var(--muted);margin-bottom:8px;font-weight:700">모스트 챔피언 (전체 숙련도 TOP 10)</div>
+            <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:8px 6px">
+              ${p.topChamps.map(c => `
+                <div style="text-align:center">
+                  <div class="champ-wrap" style="width:100%;margin-bottom:2px">
+                    <img src="${c.imgUrl}" style="width:100%;height:auto;aspect-ratio:1;border-radius:6px" alt="${c.name}" onerror="this.style.display='none'">
+                    <span class="champ-lv">M${c.level}</span>
+                    <div class="champ-tooltip">${c.name}</div>
+                  </div>
+                  <div style="font-size:0.58rem;color:var(--gold);font-weight:700">${(c.points/1000).toFixed(0)}K</div>
+                </div>`).join('')}
+            </div>
+          </div>` : '';
+
+        // 4. 상세 전적
+        let matchHtml = '';
+        if (p.recentMatches?.length) {
+          const ms = p.recentMatches;
+          const wins = ms.filter(m => m.win).length;
+          const wr = (wins / ms.length * 100).toFixed(0);
+          const wc = wr >= 55 ? '#3ecf78' : wr >= 50 ? '#dde4f0' : '#ef5350';
+          const rows = ms.map((m, idx) => {
+            const kc = m.kda>=4?'#3ecf78':m.kda>=2.5?'#d4af37':'#ef5350';
+            const tlId = `${uid}_${idx}`;
+            const itemImgs = (m.items || [0,0,0,0,0,0,0]).map(iid => {
+              if (iid === 0) return `<div class="match-item"></div>`;
+              return `<img class="match-item" src="https://ddragon.leagueoflegends.com/cdn/15.4.1/img/item/${iid}.png" onerror="this.style.display='none'" alt="${iid}">`;
+            }).join('');
+            return `<div class="match-row" style="flex-direction:column;align-items:flex-start;padding:6px 0">
+              <div style="display:flex;width:100%;align-items:center;gap:5px">
+                <img class="match-champ" src="https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/${m.champion}_0.jpg" onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/champion/${m.champion}.png'" alt="${m.champion}">
+                <span class="match-wl ${m.win?'w':'l'}">${m.win?'W':'L'}</span>
+                <span class="match-name">${m.champion}</span>
+                <span class="match-kda" style="color:${kc}">${m.kills}/${m.deaths}/${m.assists}</span>
+                <span class="match-meta">${m.lane}·${m.duration}</span>
+                <button class="tl-btn" onclick="loadTimeline('${m.matchId}',${m.participantId},'${tlId}')">상세</button>
+              </div>
+              <div class="match-items">${itemImgs}</div>
+            </div><div class="tl-section" id="tl_${tlId}"></div>`;
+          }).join('');
+          matchHtml = `<button class="matches-toggle" style="margin-top:16px" onclick="toggleMatches('${uid}')">
+            <span>최근 20판 전적 요약</span>
+            <span style="color:${wc}">${wins}승 ${ms.length-wins}패 (${wr}%) ▼</span>
+          </button><div class="matches-list" id="matches_${uid}" style="padding-top:6px">${rows}</div>`;
+        }
+        return laneHtml + seasonMostHtml + masteryHtml + matchHtml;
+      })()}
+      <div class="card-btns" style="display:flex;gap:4px">
+        <button class="btn-icon" onclick="refreshPlayer('${esc(p.displayName)}')" title="Riot API에서 새로 불러오기">↻</button>
+        <button class="btn btn-rm" onclick="removePlayer('${esc(p.displayName)}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── 파워 그래프 ────────────────────────────────────────────────────
+function renderChart() {
+  const ctx = document.getElementById('scoreChart').getContext('2d');
+  if (chart) { chart.destroy(); chart = null; }
+  if (!players.length) return;
+
+  // 인원수에 따른 높이 동적 설정
+  const chartContainer = document.querySelector('.chart-container');
+  const dynamicHeight = Math.max(250, players.length * 35 + 50);
+  chartContainer.style.height = `${dynamicHeight}px`;
+
+  const sorted = [...players].sort((a, b) => b.score - a.score);
+  const labels = sorted.map(p => p.gameName);
+  const data   = sorted.map(p => p.score);
+  const bgs    = sorted.map(p => {
+    const r = p.highestRank;
+    return (tc(r?.tier) + 'bb');
+  });
+  const bords  = sorted.map(p => {
+    const r = p.highestRank;
+    return tc(r?.tier);
+  });
+
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: bgs, borderColor: bords, borderWidth: 1, borderRadius: 4 }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const p = sorted[ctx.dataIndex];
+              const r = p.highestRank;
+              return [`점수: ${ctx.raw.toLocaleString()}`, r ? `${r.queueType} ${tierLabel(r)}` : '언랭', `주 라인: ${p.primaryLaneKo}`];
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { color: '#252f4a' }, ticks: { color: '#7a8aaa' } },
+        y: { grid: { display: false },   ticks: { color: '#dde4f0', font: { size: 12 } } },
+      },
+    },
+  });
+}
+
+// ── 라인별 점수 계산 ──────────────────────────────────────────────
+// 기본 티어 점수 + 해당 라인 승률/KDA/25분 전후 승률 보정
+const LANE_EN_TO_KO = { TOP:'탑', JUNGLE:'정글', MIDDLE:'미드', BOTTOM:'원딜', UTILITY:'서포터' };
+
+function calcLaneStats(player, laneEn) {
+  const laneKo = LANE_EN_TO_KO[laneEn];
+  const ms = (player.recentMatches || []).filter(m => m.lane === laneKo);
+  const n  = ms.length;
+  if (!n) return { score: player.score, wr: null, avgKda: null, earlyWr: null, lateWr: null, games: 0 };
+
+  const wins   = ms.filter(m => m.win).length;
+  const wr     = wins / n * 100;
+  const avgKda = ms.reduce((s, m) => s + m.kda, 0) / n;
+
+  const early  = ms.filter(m => (m.durationSec || 9999) < 1500);
+  const late   = ms.filter(m => (m.durationSec || 0)   >= 1500);
+  const earlyWr = early.length ? early.filter(m => m.win).length / early.length * 100 : null;
+  const lateWr  = late.length  ? late.filter(m => m.win).length  / late.length  * 100 : null;
+
+  // 보정: 승률 ±15점/%, KDA ±30점/1.0
+  const wrBonus  = (wr - 50) * 15;
+  const kdaBonus = (avgKda - 2) * 30;
+  const score    = Math.round(player.score + wrBonus + kdaBonus);
+
+  return { score, wr, avgKda, earlyWr, lateWr, games: n };
+}
+
+// ── 라인별 순위 ────────────────────────────────────────────────────
+function renderLanes() {
+  LANES.forEach(lane => {
+    const col     = document.getElementById(`lane-${lane}`);
+    const header  = col.querySelector('.lane-head').outerHTML;
+    // 해당 라인 플레이 횟수 있는 플레이어 모두 포함 (주+부 라인)
+    const lp = players
+      .filter(p => (p.laneCounts?.[lane] || 0) > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (!lp.length) {
+      col.innerHTML = header + `<div class="lane-empty">없음</div>`;
+      return;
+    }
+    // 라인별 점수로 재정렬
+    lp.sort((a, b) => calcLaneStats(b, lane).score - calcLaneStats(a, lane).score);
+
+    col.innerHTML = header + lp.map((p, i) => {
+      const r = p.solo || p.flex;
+      const color = tc(r?.tier);
+      const isPrimary = p.primaryLane === lane;
+      const st = calcLaneStats(p, lane);
+      const wrColor = st.wr >= 55 ? '#3ecf78' : st.wr >= 50 ? '#dde4f0' : '#ef5350';
+      const subLine = st.games
+        ? [
+            st.wr    !== null ? `<span style="color:${wrColor}">${st.wr.toFixed(0)}%</span>` : '',
+            st.avgKda !== null ? `KDA ${st.avgKda.toFixed(1)}` : '',
+            st.earlyWr !== null ? `25분↑ ${st.earlyWr.toFixed(0)}%` : '',
+            st.lateWr  !== null ? `25분↓ ${st.lateWr.toFixed(0)}%`  : '',
+          ].filter(Boolean).join(' · ')
+        : '';
+      return `
+      <div class="lane-row" style="${isPrimary ? '' : 'opacity:0.65'}">
+        <span class="lane-num">${i + 1}</span>
+        <div class="lane-info">
+          <div class="lane-pname" title="${p.displayName}">
+            ${p.gameName}${isPrimary ? '' : ` <span style="color:var(--muted);font-size:.65rem">(부)</span>`}
+            <span style="color:var(--muted);font-size:.65rem"> ${st.games}판</span>
+          </div>
+          <div style="font-size:0.7rem;color:${color}">${r ? tierLabel(r) : '언랭'}</div>
+          ${subLine ? `<div style="font-size:0.65rem;color:var(--muted)">${subLine}</div>` : ''}
+        </div>
+        <span class="lane-score">${st.score.toLocaleString()}</span>
+      </div>`;
+    }).join('');
+  });
+}
+
+// ── 선택 토글 ──────────────────────────────────────────────────────
+function togglePlayer(dn) {
+  selected.has(dn) ? selected.delete(dn) : selected.add(dn);
+  renderToggles();
+  updateSelCount();
+}
+
+function renderToggles() {
+  document.getElementById('toggleGrid').innerHTML = players.map(p => {
+    const on    = selected.has(p.displayName);
+    const color = tc(p.solo?.tier || p.flex?.tier);
+    return `<div class="p-toggle${on ? ' on' : ''}" onclick="togglePlayer('${esc(p.displayName)}')">
+      ${p.gameName}
+      ${p.solo?.tier ? `<span style="color:${color}">●</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function updateSelCount() {
+  const n  = selected.size;
+  const el = document.getElementById('selCount');
+  const odd = n > 0 && n % 2 !== 0;
+  el.textContent  = `${n}명 선택됨${odd ? ' — 짝수로 선택해야 합니다' : ''}`;
+  el.className    = `sel-count${odd ? ' warn' : ''}`;
+}
+
+// ── 팀 구성 ────────────────────────────────────────────────────────
+async function balanceTeams(mode = 'balance') {
+  const sel = players.filter(p => selected.has(p.displayName));
+  if (sel.length < 2)  { alert('최소 2명을 선택하세요'); return; }
+  if (sel.length % 2)  { alert('짝수 인원을 선택해야 합니다'); return; }
+
+  const resultEl = document.getElementById('teamsResult');
+  resultEl.innerHTML = `<div class="loading-box"><span class="spinner"></span> 팀 구성 계산 중…</div>`;
+
+  try {
+    const res  = await fetch('/api/balance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ players: sel, mode }),
+    });
+    const data = await res.json();
+    if (!res.ok) { resultEl.innerHTML = `<div class="err">${data.error}</div>`; return; }
+    renderTeams(data);
+  } catch (e) {
+    resultEl.innerHTML = `<div class="err">서버 오류: ${e.message}</div>`;
+  }
+}
+
+  let lastTeamData = null; // 디코 전송용 임시 저장
+
+function renderTeams(data) {
+  const { team1, team2, team1Score, team2Score, scoreDiff, laneBalanced, mode } = data;
+  lastTeamData = data;
+
+  function playerRow(p) {
+    const r     = p.solo || p.flex;
+    const color = tc(r?.tier);
+    // 랜덤 라인 배정인 경우 할당된 라인을 강조해서 표시
+    const laneDisplay = p.assignedLaneKo 
+      ? `<span class="lane-tag" style="background:var(--gold);color:#0a0e1a;border-color:var(--gold)">${p.assignedLaneKo}</span>
+         <span style="font-size:0.65rem;color:var(--muted)"> (주:${p.primaryLaneKo})</span>`
+      : `<span class="lane-tag">${p.primaryLaneKo}</span>`;
+
+    return `
+    <div class="team-player">
+      <img class="team-icon" src="${p.iconUrl}"
+        onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/profileicon/29.png'" alt="">
+      ${laneDisplay}
+      <div class="team-player-info">
+        <div class="team-player-name">${p.gameName}</div>
+        <div class="team-player-tier" style="color:${color}">${r ? tierLabel(r) : '언랭'}</div>
+      </div>
+      <div class="team-player-score">${p.score.toLocaleString()}</div>
+    </div>`;
+  }
+
+  function teamCard(players, cls, label, score) {
+    const wr = players.filter(p => p.solo).reduce((s, p) => s + p.solo.wins, 0);
+    const lr = players.filter(p => p.solo).reduce((s, p) => s + p.solo.losses, 0);
+    const avg = players.length ? Math.round(score / players.length) : 0;
+    return `
+    <div class="team-card ${cls}">
+      <div class="team-head">
+        <span>${label}</span>
+        <span style="font-size:.82rem;opacity:.75">합계 ${score.toLocaleString()}pt</span>
+      </div>
+      ${players.map(playerRow).join('')}
+      <div class="team-foot">
+        <span>평균 ${avg.toLocaleString()}pt</span>
+        ${wr + lr > 0 ? `<span>${wr}W ${lr}L</span>` : ''}
+      </div>
+    </div>`;
+  }
+
+  const total  = team1Score + team2Score;
+  const diffPct = total > 0 ? ((scoreDiff / (total / 2)) * 100).toFixed(1) : 0;
+  
+  let bannerText = `점수 차이: <strong>${scoreDiff.toLocaleString()}pt</strong> (${diffPct}%)`;
+  if (mode === 'balance') {
+    bannerText += ` &nbsp;·&nbsp; ${laneBalanced ? '<span style="color:#3ecf78">라인 밸런스 완료 ✓</span>' : '<span style="color:#e8c86b">라인 불균형 주의</span>'}`;
+  } else if (mode === 'random') {
+    bannerText = `🎲 <strong>완전 랜덤 배정</strong> 결과입니다.`;
+  } else {
+    bannerText = `🔀 <strong>랜덤 배정 + 라인 무작위 할당</strong> 결과입니다.`;
+  }
+
+  document.getElementById('teamsResult').innerHTML = `
+  <div class="teams-grid">
+    ${teamCard(team1, 't1', '🔵 팀 1', team1Score)}
+    ${teamCard(team2, 't2', '🔴 팀 2', team2Score)}
+    <div class="diff-banner">
+      ${bannerText}
+      <button class="btn btn-discord" onclick="sendToDiscord()">📢 디코로 결과 전송</button>
+    </div>
+  </div>`;
+}
+
+async function sendToDiscord() {
+  if (!lastTeamData) return;
+  const btn = document.querySelector('.btn-discord');
+  const originalText = btn.textContent;
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ 전송 중...';
+
+  try {
+    const res = await fetch('/api/discord', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(lastTeamData)
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.textContent = '✅ 전송 완료!';
+      btn.style.background = '#3ecf78';
+    } else {
+      alert('전송 실패: ' + data.error);
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  } catch (e) {
+    alert('오류: ' + e.message);
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
+function toggleMatches(uid) {
+  document.getElementById(`matches_${uid}`).classList.toggle('open');
+}
+
+const MONSTER_ICON = {
+  DRAGON:'🐉', BARON_NASHOR:'🟣', RIFTHERALD:'👁', HORDE:'🐛',
+};
+
+async function loadTimeline(matchId, pid, tlId) {
+  const el = document.getElementById(`tl_${tlId}`);
+  // 이미 열려있으면 닫기
+  if (el.classList.contains('open')) { el.classList.remove('open'); return; }
+  // 이미 로드됐으면 바로 열기
+  if (el.dataset.loaded) { el.classList.add('open'); return; }
+
+  el.innerHTML = `<div style="padding:6px;color:var(--muted);font-size:0.75rem"><span class="spinner"></span> 타임라인 로드 중…</div>`;
+  el.classList.add('open');
+
+  try {
+    const res  = await fetch(`/api/timeline/${matchId}/${pid}`);
+    const data = await res.json();
+    if (!res.ok) { el.innerHTML = `<div style="color:#ef5350;font-size:0.75rem;padding:6px">${data.error}</div>`; return; }
+
+    if (!data.events.length) { el.innerHTML = `<div style="color:var(--muted);font-size:0.75rem;padding:6px">이벤트 없음</div>`; return; }
+
+    el.innerHTML = data.events.map(e => {
+      if (e.type === 'item') return `
+        <div class="tl-row">
+          <span class="tl-min">${e.minute}분</span>
+          <img class="tl-icon" src="${e.imgUrl}" alt="" onerror="this.style.display='none'">
+          <span class="tl-label">${e.name}</span>
+        </div>`;
+      if (e.type === 'kill') return `
+        <div class="tl-row">
+          <span class="tl-min">${e.minute}분</span>
+          <span style="font-size:0.85rem">⚔</span>
+          <span class="tl-label" style="color:#3ecf78">킬</span>
+        </div>`;
+      if (e.type === 'death') return `
+        <div class="tl-row">
+          <span class="tl-min">${e.minute}분</span>
+          <span style="font-size:0.85rem">💀</span>
+          <span class="tl-label" style="color:#ef5350">데스</span>
+        </div>`;
+      if (e.type === 'assist') return `
+        <div class="tl-row">
+          <span class="tl-min">${e.minute}분</span>
+          <span style="font-size:0.85rem">🤝</span>
+          <span class="tl-label" style="color:#d4af37">어시스트</span>
+        </div>`;
+      if (e.type === 'objective') return `
+        <div class="tl-row">
+          <span class="tl-min">${e.minute}분</span>
+          <span style="font-size:0.85rem">${MONSTER_ICON[e.monster] || '🎯'}</span>
+          <span class="tl-label">${e.name}</span>
+        </div>`;
+      return '';
+    }).join('');
+    el.dataset.loaded = '1';
+  } catch(err) {
+    el.innerHTML = `<div style="color:#ef5350;font-size:0.75rem;padding:6px">오류: ${err.message}</div>`;
+  }
+}
+
+// ── 저장된 소환사 ──────────────────────────────────────────────────────────
+async function loadSavedPlayers() {
+  try {
+    const res  = await fetch('/api/summoners');
+    if (!res.ok) return;
+    renderSavedList(await res.json());
+  } catch (e) { /* ignore */ }
+}
+
+const TIER_KO_SHORT = {
+  IRON:'아이언', BRONZE:'브론즈', SILVER:'실버', GOLD:'골드',
+  PLATINUM:'플래티넘', EMERALD:'에메랄드', DIAMOND:'다이아',
+  MASTER:'마스터', GRANDMASTER:'그랜마', CHALLENGER:'챌린저',
+};
+
+function renderSavedList(summaries) {
+  const section = document.getElementById('savedSection');
+  const list    = document.getElementById('savedList');
+  if (!summaries || !summaries.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  list.innerHTML = summaries.map(s => {
+    const alreadyAdded = players.some(p => p.displayName === s.displayName);
+    const tier  = s.tier ? (TIER_KO_SHORT[s.tier] || s.tier) : '언랭';
+    const rankStr = (s.rank && !['MASTER','GRANDMASTER','CHALLENGER'].includes(s.tier))
+      ? ` ${s.rank}` : '';
+    const lpStr = s.lp != null ? ` ${s.lp}LP` : '';
+    const color = tc(s.tier);
+    return `<div class="saved-item">
+      <img src="${s.iconUrl || ''}" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);flex-shrink:0"
+        onerror="this.style.display='none'" alt="">
+      <div class="saved-item-info">
+        <div class="saved-item-name" title="${s.displayName}">
+          ${s.gameName}<span style="color:var(--muted);font-weight:400"> #${s.tagLine}</span>
+        </div>
+        <div class="saved-item-meta" style="color:${color}">${tier}${rankStr}${lpStr}
+          <span style="color:var(--muted)"> · ${s.cachedAt}</span>
+        </div>
+      </div>
+      <button class="btn btn-gold" style="padding:4px 10px;font-size:0.76rem;flex-shrink:0"
+        onclick="loadFromSaved('${esc(s.displayName)}')" ${alreadyAdded ? 'disabled' : ''}>
+        ${alreadyAdded ? '추가됨' : '불러오기'}
+      </button>
+      <button class="btn-icon" onclick="deleteSaved('${esc(s.displayName)}')"
+        title="저장 목록에서 삭제" style="flex-shrink:0">🗑</button>
+    </div>`;
+  }).join('');
+}
+
+async function loadFromSaved(displayName) {
+  const errEl = document.getElementById('inputErr');
+  errEl.textContent = '';
+  if (players.find(p => p.displayName === displayName)) {
+    errEl.textContent = '이미 추가된 플레이어입니다'; return;
+  }
+  try {
+    const res  = await fetch(`/api/player/${encodeURIComponent(displayName)}`);
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || '오류'; return; }
+    players.push(data);
+    selected.add(data.displayName);
+    renderAll();
+    loadSavedPlayers();
+  } catch (e) { errEl.textContent = '오류: ' + e.message; }
+}
+
+async function deleteSaved(displayName) {
+  if (!confirm(`'${displayName}' 를 저장 목록에서 삭제할까요?`)) return;
+  try {
+    await fetch(`/api/summoner/${encodeURIComponent(displayName)}`, { method: 'DELETE' });
+    loadSavedPlayers();
+  } catch (e) { alert('오류: ' + e.message); }
+}
+
+async function refreshAllSaved() {
+  const btn = document.getElementById('refreshAllBtn');
+  btn.disabled = true;
+  const orig = btn.textContent;
+
+  try {
+    const res = await fetch('/api/summoners');
+    const summaries = await res.json();
+    if (!summaries.length) { btn.textContent = orig; btn.disabled = false; return; }
+
+    for (let i = 0; i < summaries.length; i++) {
+      const s = summaries[i];
+      btn.textContent = `(${i + 1}/${summaries.length}) ${s.gameName} 조회 중…`;
+      try {
+        const r    = await fetch(`/api/player/${encodeURIComponent(s.displayName)}?refresh=true`);
+        const data = await r.json();
+        if (r.ok) {
+          // 현재 세션에 추가된 플레이어면 데이터도 갱신
+          const idx = players.findIndex(p => p.displayName === s.displayName);
+          if (idx !== -1) players[idx] = data;
+        }
+      } catch (e) { /* 개별 실패 무시하고 다음 진행 */ }
+    }
+
+    renderAll();
+    loadSavedPlayers();
+    btn.textContent = '✓ 완료';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  } catch (e) {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+}
+
+async function refreshPlayer(displayName) {
+  // 카드의 ↻ 버튼 로딩 표시
+  const nameEl = document.querySelector(`.p-name[title="${displayName}"]`);
+  const btn = nameEl?.closest('.p-card')?.querySelector('.btn-icon');
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
+  try {
+    const res  = await fetch(`/api/player/${encodeURIComponent(displayName)}?refresh=true`);
+    const data = await res.json();
+    if (!res.ok) { document.getElementById('inputErr').textContent = data.error; return; }
+    const idx = players.findIndex(p => p.displayName === displayName);
+    if (idx !== -1) players[idx] = data;
+    renderAll();
+    loadSavedPlayers();
+  } catch (e) {
+    document.getElementById('inputErr').textContent = '오류: ' + e.message;
+  }
+}
+
+// Enter 키 지원
+document.getElementById('riotInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addPlayer();
+});
+
+// 페이지 로드 시 저장된 소환사 목록 불러오기
+loadSavedPlayers();
+</script>
+</body>
+</html>
