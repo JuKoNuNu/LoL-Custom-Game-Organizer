@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 @Service
 public class RiotApiService {
 
-    @Value("${RIOT_apiKey}")
+    @Value("${RIOT_API_KEY}")
     private String apiKey;
 
     public static final String KR   = "https://kr.api.riotgames.com";

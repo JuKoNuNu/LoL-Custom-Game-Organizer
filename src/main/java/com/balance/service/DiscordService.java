@@ -14,7 +14,7 @@ import java.util.*;
 @Service
 public class DiscordService {
 
-    @Value("${discordWebhookUrl}")
+    @Value("${DISCORD_WEBHOOK_URL}")
     private String discordWebhookUrl;
 
     private final HttpClient httpClient;
