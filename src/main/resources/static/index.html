@@ -551,9 +551,8 @@ function renderCards() {
           onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/profileicon/29.png'" alt="">
         <div style="min-width:0">
           <div class="p-name" title="${p.displayName}">${p.gameName}${p.fromCache ? `<span style="font-size:0.58rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle" title="캐시됨: ${p.cachedAt}">캐시</span>` : ''}</div>
-          <div class="p-sub">Lv.${p.level} · #${p.tagLine}</div>
+          <div class="p-sub">Lv.${p.level} · #${p.tagLine} · <span style="font-weight:700;color:var(--gold)">${p.score.toLocaleString()}pt</span></div>
         </div>
-        <div class="p-score" style="margin-left:auto;font-size:1.1rem;font-weight:700;color:var(--gold)">${p.score.toLocaleString()}</div>
       </div>
 
       ${rank ? `
