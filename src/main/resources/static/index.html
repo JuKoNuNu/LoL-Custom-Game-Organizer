@@ -894,12 +894,19 @@ function calcLaneTier(player, laneEn) {
 }
 
 // ── 라인별 순위 ────────────────────────────────────────────────────
+function getLaneGames(p, lane) {
+  if ((p.laneCounts?.[lane] || 0) > 0) return p.laneCounts[lane];
+  if ((p.laneStats?.[lane]?.n || 0) > 0) return p.laneStats[lane].n;
+  const laneKo = LANE_KO[lane];
+  return (p.recentMatches || []).filter(m => m.lane === laneKo).length;
+}
+
 function renderLanes() {
   LANES.forEach(lane => {
     const col     = document.getElementById(`lane-${lane}`);
     const header  = col.querySelector('.lane-head').outerHTML;
     const lp = players
-      .filter(p => (p.laneCounts?.[lane] || p.laneStats?.[lane]?.n || 0) > 0)
+      .filter(p => getLaneGames(p, lane) > 0)
       .sort((a, b) => b.score - a.score);
 
     if (!lp.length) {
