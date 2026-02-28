@@ -609,16 +609,16 @@ function clearAll() {
 
 // ── 전체 렌더 ──────────────────────────────────────────────────────
 function renderAll() {
-  renderCards();
-  renderChart();
-  renderLanes();
-  renderToggles();
-  updateSelCount();
-  cleanupGroups();
   document.getElementById('pCount').textContent = players.length ? `(${players.length}명)` : '';
   document.getElementById('laneSection').style.display    = players.length   ? '' : 'none';
   document.getElementById('balanceSection').style.display = players.length >= 2 ? '' : 'none';
   document.getElementById('teamsResult').innerHTML = '';
+  try { renderCards(); }  catch(e) { console.error('renderCards error:', e); }
+  try { renderChart(); }  catch(e) { console.error('renderChart error:', e); }
+  try { renderLanes(); }  catch(e) { console.error('renderLanes error:', e); }
+  try { renderToggles(); } catch(e) { console.error('renderToggles error:', e); }
+  try { updateSelCount(); } catch(e) { console.error('updateSelCount error:', e); }
+  try { cleanupGroups(); }  catch(e) { console.error('cleanupGroups error:', e); }
 }
 
 // ── 플레이어 카드 ──────────────────────────────────────────────────
@@ -654,7 +654,7 @@ function renderCards() {
         <div style="min-width:0">
           <div class="p-name" title="${p.displayName}">${p.gameName}${p.fromCache ? `<span style="font-size:0.58rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle" title="캐시됨: ${p.cachedAt}">캐시</span>` : ''}</div>
           <div class="p-sub">Lv.${p.level} · #${p.tagLine} · <span style="font-weight:700;color:var(--gold)">${p.score.toLocaleString()}pt</span></div>
-          <div style="margin-top:4px"><span class="lane-tag">${p.primaryLaneKo} (${p.primaryLaneWr || 0}%)</span></div>
+          <div style="margin-top:4px"><span class="lane-tag">${p.primaryLaneKo} (${(() => { const s = p.laneStats?.[p.primaryLane]; return s && s.n > 0 ? Math.round(s.w / s.n * 100) : (p.primaryLaneWr || 0); })()}%)</span></div>
         </div>
         <div class="p-score" style="margin-left:auto;font-size:1.1rem;font-weight:700;color:var(--gold)">${p.score.toLocaleString()}</div>
       </div>
