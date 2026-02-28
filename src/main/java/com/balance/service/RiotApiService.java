@@ -278,14 +278,17 @@ public class RiotApiService {
                 return r;
             }).collect(Collectors.toList());
 
-        // 주 라인/부 라인 결정 (승률 우선, 승률 같으면 판수 우선)
+        // 주 라인/부 라인 결정 (판수 가중 승률: adjustedWR = winRate * (1 - 1/(games+1)))
+        // 1판 100% → 50, 5판 70% → 58.3, 9판 44% → 39.6, 8판 50% → 44.4
         List<String> sortedLanes = laneStats.entrySet().stream()
             .sorted((a, b) -> {
                 Map<String, Integer> sA = a.getValue();
                 Map<String, Integer> sB = b.getValue();
-                double wrA = sA.get("n") > 0 ? (double) sA.get("w") / sA.get("n") : 0;
-                double wrB = sB.get("n") > 0 ? (double) sB.get("w") / sB.get("n") : 0;
-                if (Math.abs(wrA - wrB) > 0.0001) return Double.compare(wrB, wrA);
+                double wrA = sA.get("n") > 0 ? (double) sA.get("w") / sA.get("n") * 100.0 : 0;
+                double wrB = sB.get("n") > 0 ? (double) sB.get("w") / sB.get("n") * 100.0 : 0;
+                double adjA = wrA * (1.0 - 1.0 / (sA.get("n") + 1));
+                double adjB = wrB * (1.0 - 1.0 / (sB.get("n") + 1));
+                if (Math.abs(adjA - adjB) > 0.01) return Double.compare(adjB, adjA);
                 return Integer.compare(sB.get("n"), sA.get("n"));
             })
             .map(Map.Entry::getKey)
