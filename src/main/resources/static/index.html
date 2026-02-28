@@ -899,7 +899,7 @@ function renderLanes() {
     const col     = document.getElementById(`lane-${lane}`);
     const header  = col.querySelector('.lane-head').outerHTML;
     const lp = players
-      .filter(p => (p.laneCounts?.[lane] || 0) > 0)
+      .filter(p => (p.laneCounts?.[lane] || p.laneStats?.[lane]?.n || 0) > 0)
       .sort((a, b) => b.score - a.score);
 
     if (!lp.length) {
