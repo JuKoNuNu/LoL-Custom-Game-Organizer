@@ -278,11 +278,28 @@ public class RiotApiService {
                 return r;
             }).collect(Collectors.toList());
 
-        List<Map.Entry<String, Integer>> sortedLanes = laneCounts.entrySet().stream()
-            .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+        // 주 라인/부 라인 결정 (승률 우선, 승률 같으면 판수 우선)
+        List<String> sortedLanes = laneStats.entrySet().stream()
+            .sorted((a, b) -> {
+                Map<String, Integer> sA = a.getValue();
+                Map<String, Integer> sB = b.getValue();
+                double wrA = sA.get("n") > 0 ? (double) sA.get("w") / sA.get("n") : 0;
+                double wrB = sB.get("n") > 0 ? (double) sB.get("w") / sB.get("n") : 0;
+                if (Math.abs(wrA - wrB) > 0.0001) return Double.compare(wrB, wrA);
+                return Integer.compare(sB.get("n"), sA.get("n"));
+            })
+            .map(Map.Entry::getKey)
             .collect(Collectors.toList());
-        String primary   = sortedLanes.size() > 0 ? sortedLanes.get(0).getKey() : "UNKNOWN";
-        String secondary = sortedLanes.size() > 1 ? sortedLanes.get(1).getKey() : "UNKNOWN";
+
+        String primary   = sortedLanes.size() > 0 ? sortedLanes.get(0) : "UNKNOWN";
+        String secondary = sortedLanes.size() > 1 ? sortedLanes.get(1) : "UNKNOWN";
+
+        // 주 라인 승률 계산
+        int pWr = 0;
+        if (laneStats.containsKey(primary)) {
+            Map<String, Integer> ps = laneStats.get(primary);
+            pWr = (int) Math.round(ps.get("w") * 100.0 / Math.max(ps.get("n"), 1));
+        }
 
         RiotResponse masteryResp = rget(
             KR + "/lol/champion-mastery/v4/champion-masteries/by-puuid/" + puuid + "/top?count=10");
@@ -317,10 +334,14 @@ public class RiotApiService {
         resp.put("level",          summ.path("summonerLevel").asInt(0));
         resp.put("iconUrl", ddBase + "/img/profileicon/" + summ.path("profileIconId").asInt(29) + ".png");
         resp.put("highestRank",    highest);
+        resp.put("solo",           fmtSolo);
+        resp.put("flex",           fmtFlex);
         resp.put("primaryLane",    primary);
         resp.put("secondaryLane",  secondary);
         resp.put("primaryLaneKo",  LANE_KO.getOrDefault(primary, "미정"));
+        resp.put("primaryLaneWr",  pWr);
         resp.put("laneStats",      laneStats);
+        resp.put("laneCounts",     laneCounts);
         resp.put("score",          score);
         resp.put("topChamps",      topChamps);
         resp.put("seasonMost",     seasonMost);

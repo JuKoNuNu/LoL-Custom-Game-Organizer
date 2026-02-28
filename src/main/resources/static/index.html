@@ -552,6 +552,7 @@ function renderCards() {
         <div style="min-width:0">
           <div class="p-name" title="${p.displayName}">${p.gameName}${p.fromCache ? `<span style="font-size:0.58rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);padding:1px 5px;border-radius:3px;margin-left:5px;vertical-align:middle" title="캐시됨: ${p.cachedAt}">캐시</span>` : ''}</div>
           <div class="p-sub">Lv.${p.level} · #${p.tagLine} · <span style="font-weight:700;color:var(--gold)">${p.score.toLocaleString()}pt</span></div>
+          <div style="margin-top:4px"><span class="lane-tag">${p.primaryLaneKo} (${p.primaryLaneWr || 0}%)</span></div>
         </div>
       </div>
 
@@ -875,8 +876,8 @@ function renderTeams(data) {
     // 랜덤 라인 배정인 경우 할당된 라인을 강조해서 표시
     const laneDisplay = p.assignedLaneKo 
       ? `<span class="lane-tag" style="background:var(--gold);color:#0a0e1a;border-color:var(--gold)">${p.assignedLaneKo}</span>
-         <span style="font-size:0.65rem;color:var(--muted)"> (주:${p.primaryLaneKo})</span>`
-      : `<span class="lane-tag">${p.primaryLaneKo}</span>`;
+         <span style="font-size:0.65rem;color:var(--muted)"> (주:${p.primaryLaneKo} ${p.primaryLaneWr || 0}%)</span>`
+      : `<span class="lane-tag">${p.primaryLaneKo} (${p.primaryLaneWr || 0}%)</span>`;
 
     return `
     <div class="team-player">
