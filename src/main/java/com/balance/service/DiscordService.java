@@ -21,7 +21,7 @@ public class DiscordService {
     private final ObjectMapper objectMapper;
 
     public DiscordService() {
-        this.httpClient   = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        this.httpClient   = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -44,15 +44,18 @@ public class DiscordService {
         embed.put("footer", Map.of("text", "내전 밸런스 메이커 by Gemini"));
 
         String json = objectMapper.writeValueAsString(Map.of("embeds", List.of(embed)));
+        System.out.println("[Discord] Sending webhook, payload size: " + json.length() + " bytes");
+        System.out.println("[Discord] Webhook URL: " + discordWebhookUrl.substring(0, Math.min(60, discordWebhookUrl.length())) + "...");
 
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(discordWebhookUrl))
             .header("Content-Type", "application/json")
-            .timeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofSeconds(30))
             .POST(HttpRequest.BodyPublishers.ofString(json))
             .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println("[Discord] Response: " + response.statusCode() + " " + response.body());
         return response.statusCode() == 200 || response.statusCode() == 204;
     }
 

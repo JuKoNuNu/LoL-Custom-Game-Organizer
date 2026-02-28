@@ -121,6 +121,7 @@ public class ApiController {
             boolean success = discordService.sendTeamResult(body);
             return ResponseEntity.ok(Map.of("success", success));
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
