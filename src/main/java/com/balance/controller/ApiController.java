@@ -98,7 +98,17 @@ public class ApiController {
             if (players == null || players.size() < 2) {
                 return ResponseEntity.badRequest().body(Map.of("error", "최소 2명 필요"));
             }
-            return ResponseEntity.ok(balanceService.balance(players, mode));
+            List<List<Integer>> fixedGroups = body.containsKey("fixedGroups")
+                ? ((List<List<?>>) body.get("fixedGroups")).stream()
+                    .map(g -> g.stream().map(v -> ((Number) v).intValue()).collect(java.util.stream.Collectors.toList()))
+                    .collect(java.util.stream.Collectors.toList())
+                : List.of();
+            List<List<Integer>> separateGroups = body.containsKey("separateGroups")
+                ? ((List<List<?>>) body.get("separateGroups")).stream()
+                    .map(g -> g.stream().map(v -> ((Number) v).intValue()).collect(java.util.stream.Collectors.toList()))
+                    .collect(java.util.stream.Collectors.toList())
+                : List.of();
+            return ResponseEntity.ok(balanceService.balance(players, mode, fixedGroups, separateGroups));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }

@@ -251,6 +251,11 @@ section { margin-top: 28px; }
 .lane-info { flex: 1; min-width: 0; }
 .lane-pname { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lane-tier  { font-size: 0.72rem; }
+.lane-tier-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 0.65rem; font-weight: 800; margin-left: 4px;
+  letter-spacing: 1px;
+}
 .lane-score { font-size: 0.78rem; font-weight: 700; color: var(--gold); }
 .lane-empty { padding: 12px; text-align: center; color: var(--muted); font-size: 0.8rem; }
 
@@ -338,6 +343,69 @@ section { margin-top: 28px; }
   text-align: center; color: var(--muted); padding: 30px;
   font-size: 0.9rem;
 }
+
+/* ── CONSTRAINT GROUPS ── */
+.constraint-section {
+  margin-top: 16px; padding: 14px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+}
+.constraint-title {
+  font-size: 0.85rem; font-weight: 700; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  user-select: none;
+}
+.constraint-title .arrow { transition: transform .2s; font-size: 0.7rem; }
+.constraint-title .arrow.open { transform: rotate(90deg); }
+.constraint-body { display: none; }
+.constraint-body.open { display: block; }
+.constraint-desc {
+  font-size: 0.72rem; color: var(--muted); margin-bottom: 10px;
+  line-height: 1.5;
+}
+.group-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+}
+.group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.group-label { font-size: 0.8rem; font-weight: 700; }
+.group-members { display: flex; flex-wrap: wrap; gap: 6px; }
+.group-member {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 8px; font-size: 0.75rem;
+}
+.group-member .rm {
+  cursor: pointer; color: var(--muted); font-size: 0.7rem;
+  margin-left: 2px;
+}
+.group-member .rm:hover { color: #ef5350; }
+.group-add-btn {
+  background: transparent; border: 1px dashed var(--border);
+  border-radius: 4px; padding: 3px 8px; font-size: 0.75rem;
+  color: var(--gold); cursor: pointer; font-family: inherit;
+}
+.group-add-btn:hover { border-color: var(--gold); }
+.add-group-btn {
+  background: transparent; border: 1px dashed var(--border);
+  border-radius: 8px; padding: 8px; text-align: center;
+  font-size: 0.78rem; color: var(--muted); cursor: pointer;
+  font-family: inherit; width: 100%;
+}
+.add-group-btn:hover { border-color: var(--gold); color: var(--gold); }
+.group-player-select {
+  position: absolute; background: var(--card); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px; z-index: 100; min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.group-player-option {
+  padding: 5px 10px; font-size: 0.78rem; cursor: pointer;
+  border-radius: 4px; transition: background .15s;
+}
+.group-player-option:hover { background: var(--surface); }
+.group-player-option.disabled { opacity: 0.35; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -420,6 +488,39 @@ section { margin-top: 28px; }
       <button class="btn btn-ghost" style="padding:11px 18px" onclick="balanceTeams('random_lane')">🔀 랜덤 + 라인배정</button>
       <span class="sel-count" id="selCount"></span>
     </div>
+
+    <!-- 고정그룹 -->
+    <div class="constraint-section" style="margin-top:14px">
+      <div class="constraint-title" onclick="toggleConstraint('fixed')">
+        <span class="arrow" id="fixedArrow">▶</span>
+        <span style="color:var(--gold)">고정그룹</span>
+        <span id="fixedGroupCount" style="color:var(--muted);font-weight:400;font-size:0.75rem"></span>
+      </div>
+      <div class="constraint-body" id="fixedBody">
+        <div class="constraint-desc">
+          * 같은 팀에 반드시 배정되어야 하는 인원들을 같은 그룹에 넣어 설정하세요.
+        </div>
+        <div id="fixedGroups"></div>
+        <button class="add-group-btn" onclick="addGroup('fixed')">+ 고정그룹 추가</button>
+      </div>
+    </div>
+
+    <!-- 분리그룹 -->
+    <div class="constraint-section" style="margin-top:8px">
+      <div class="constraint-title" onclick="toggleConstraint('separate')">
+        <span class="arrow" id="separateArrow">▶</span>
+        <span style="color:#ef5350">분리그룹</span>
+        <span id="separateGroupCount" style="color:var(--muted);font-weight:400;font-size:0.75rem"></span>
+      </div>
+      <div class="constraint-body" id="separateBody">
+        <div class="constraint-desc">
+          * 서로 찢어졌으면 하는 인원들을 같은 그룹에 넣어 설정하시면 됩니다.
+        </div>
+        <div id="separateGroups"></div>
+        <button class="add-group-btn" onclick="addGroup('separate')">+ 분리그룹 추가</button>
+      </div>
+    </div>
+
     <div id="teamsResult"></div>
   </section>
 
@@ -513,6 +614,7 @@ function renderAll() {
   renderLanes();
   renderToggles();
   updateSelCount();
+  cleanupGroups();
   document.getElementById('pCount').textContent = players.length ? `(${players.length}명)` : '';
   document.getElementById('laneSection').style.display    = players.length   ? '' : 'none';
   document.getElementById('balanceSection').style.display = players.length >= 2 ? '' : 'none';
@@ -767,6 +869,29 @@ function calcLaneStats(player, laneEn) {
   return { score, wr, avgKda, earlyWr, lateWr, games: n };
 }
 
+// ── 라인별 티어 계산 (판수 가중 승률) ────────────────────────────────
+// adjustedWR = winRate * (1 - 1/(games+1))
+// 1판 100% → 50%, 5판 70% → 58.3%, 10판 60% → 54.5%
+const LANE_TIERS = [
+  { min: 65, label: 'S+', color: '#ffe066', bg: '#ffe06622' },
+  { min: 55, label: 'S',  color: '#ef5350', bg: '#ef535022' },
+  { min: 48, label: 'A',  color: '#ab47bc', bg: '#ab47bc22' },
+  { min: 40, label: 'B',  color: '#4fc3f7', bg: '#4fc3f722' },
+  { min: 30, label: 'C',  color: '#3ecf78', bg: '#3ecf7822' },
+  { min: 0,  label: 'D',  color: '#8d8d8d', bg: '#8d8d8d22' },
+];
+
+function calcLaneTier(player, laneEn) {
+  const laneKo = LANE_EN_TO_KO[laneEn];
+  const ms = (player.recentMatches || []).filter(m => m.lane === laneKo);
+  const games = ms.length;
+  if (!games) return null;
+  const wins = ms.filter(m => m.win).length;
+  const wr = wins / games * 100;
+  const adjusted = wr * (1 - 1 / (games + 1));
+  return LANE_TIERS.find(t => adjusted >= t.min) || LANE_TIERS[LANE_TIERS.length - 1];
+}
+
 // ── 라인별 순위 ────────────────────────────────────────────────────
 function renderLanes() {
   LANES.forEach(lane => {
@@ -790,6 +915,8 @@ function renderLanes() {
       const isPrimary = p.primaryLane === lane;
       const st = calcLaneStats(p, lane);
       const wrColor = st.wr >= 55 ? '#3ecf78' : st.wr >= 50 ? '#dde4f0' : '#ef5350';
+      const tier = calcLaneTier(p, lane);
+      const tierHtml = tier ? `<span class="lane-tier-badge" style="background:${tier.bg};color:${tier.color}">${tier.label}</span>` : '';
       const subLine = st.games
         ? [
             st.wr    !== null ? `<span style="color:${wrColor}">${st.wr.toFixed(0)}%</span>` : '',
@@ -805,6 +932,7 @@ function renderLanes() {
           <div class="lane-pname" title="${p.displayName}">
             ${p.gameName}${isPrimary ? '' : ` <span style="color:var(--muted);font-size:.65rem">(부)</span>`}
             <span style="color:var(--muted);font-size:.65rem"> ${st.games}판</span>
+            ${tierHtml}
           </div>
           <div style="font-size:0.7rem;color:${color}">${r ? tierLabel(r) : '언랭'}</div>
           ${subLine ? `<div style="font-size:0.65rem;color:var(--muted)">${subLine}</div>` : ''}
@@ -841,11 +969,141 @@ function updateSelCount() {
   el.className    = `sel-count${odd ? ' warn' : ''}`;
 }
 
+// ── 고정/분리 그룹 관리 ──────────────────────────────────────────────
+// fixedGroupsData: [[displayName, ...], ...]
+// separateGroupsData: [[displayName, ...], ...]
+let fixedGroupsData = [];
+let separateGroupsData = [];
+let activeDropdown = null; // track open dropdown
+
+function toggleConstraint(type) {
+  const body  = document.getElementById(`${type}Body`);
+  const arrow = document.getElementById(`${type}Arrow`);
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
+function addGroup(type) {
+  const data = type === 'fixed' ? fixedGroupsData : separateGroupsData;
+  data.push([]);
+  renderGroups(type);
+}
+
+function removeGroup(type, idx) {
+  const data = type === 'fixed' ? fixedGroupsData : separateGroupsData;
+  data.splice(idx, 1);
+  renderGroups(type);
+}
+
+function removeMember(type, groupIdx, memberDn) {
+  const data = type === 'fixed' ? fixedGroupsData : separateGroupsData;
+  data[groupIdx] = data[groupIdx].filter(dn => dn !== memberDn);
+  if (data[groupIdx].length === 0) data.splice(groupIdx, 1);
+  renderGroups(type);
+}
+
+function showPlayerSelect(type, groupIdx, btnEl) {
+  closeDropdown();
+  const data = type === 'fixed' ? fixedGroupsData : separateGroupsData;
+  const group = data[groupIdx];
+  const selPlayers = players.filter(p => selected.has(p.displayName));
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'group-player-select';
+  dropdown.innerHTML = selPlayers.map(p => {
+    const inGroup = group.includes(p.displayName);
+    return `<div class="group-player-option${inGroup ? ' disabled' : ''}"
+      onclick="${inGroup ? '' : `addMemberToGroup('${type}',${groupIdx},'${esc(p.displayName)}')`}">
+      ${p.gameName}${inGroup ? ' (추가됨)' : ''}
+    </div>`;
+  }).join('');
+
+  if (!selPlayers.length) {
+    dropdown.innerHTML = `<div style="padding:8px;color:var(--muted);font-size:0.75rem">참가 인원을 먼저 선택하세요</div>`;
+  }
+
+  btnEl.style.position = 'relative';
+  btnEl.parentElement.style.position = 'relative';
+  dropdown.style.top = '100%';
+  dropdown.style.left = '0';
+  btnEl.parentElement.appendChild(dropdown);
+  activeDropdown = dropdown;
+
+  setTimeout(() => {
+    document.addEventListener('click', closeDropdown, { once: true });
+  }, 0);
+}
+
+function closeDropdown() {
+  if (activeDropdown) {
+    activeDropdown.remove();
+    activeDropdown = null;
+  }
+}
+
+function addMemberToGroup(type, groupIdx, displayName) {
+  const data = type === 'fixed' ? fixedGroupsData : separateGroupsData;
+  if (!data[groupIdx].includes(displayName)) {
+    data[groupIdx].push(displayName);
+  }
+  closeDropdown();
+  renderGroups(type);
+}
+
+function renderGroups(type) {
+  const data = type === 'fixed' ? fixedGroupsData : separateGroupsData;
+  const container = document.getElementById(`${type}Groups`);
+  const countEl = document.getElementById(`${type}GroupCount`);
+  const activeCount = data.filter(g => g.length >= 2).length;
+  countEl.textContent = activeCount > 0 ? `( ${activeCount} 그룹 )` : '';
+
+  container.innerHTML = data.map((group, idx) => `
+    <div class="group-card">
+      <div class="group-header">
+        <span class="group-label">그룹 ${idx + 1}</span>
+        <button class="btn-rm" onclick="removeGroup('${type}', ${idx})" style="font-size:0.7rem">삭제</button>
+      </div>
+      <div class="group-members">
+        ${group.map(dn => {
+          const p = players.find(pl => pl.displayName === dn);
+          return p ? `<div class="group-member">
+            ${p.gameName}
+            <span class="rm" onclick="removeMember('${type}', ${idx}, '${esc(dn)}')">✕</span>
+          </div>` : '';
+        }).join('')}
+        <button class="group-add-btn" onclick="showPlayerSelect('${type}', ${idx}, this)">+ 추가</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Clean up groups when players are removed
+function cleanupGroups() {
+  const selNames = new Set(players.filter(p => selected.has(p.displayName)).map(p => p.displayName));
+  [fixedGroupsData, separateGroupsData].forEach(groups => {
+    for (let i = groups.length - 1; i >= 0; i--) {
+      groups[i] = groups[i].filter(dn => selNames.has(dn));
+      if (groups[i].length === 0) groups.splice(i, 1);
+    }
+  });
+  renderGroups('fixed');
+  renderGroups('separate');
+}
+
 // ── 팀 구성 ────────────────────────────────────────────────────────
 async function balanceTeams(mode = 'balance') {
   const sel = players.filter(p => selected.has(p.displayName));
   if (sel.length < 2)  { alert('최소 2명을 선택하세요'); return; }
   if (sel.length % 2)  { alert('짝수 인원을 선택해야 합니다'); return; }
+
+  // Build constraint indices relative to `sel` array
+  const selNames = sel.map(p => p.displayName);
+  const toIndices = (groups) => groups
+    .map(g => g.map(dn => selNames.indexOf(dn)).filter(i => i !== -1))
+    .filter(g => g.length >= 2);
+
+  const fixedG    = toIndices(fixedGroupsData);
+  const separateG = toIndices(separateGroupsData);
 
   const resultEl = document.getElementById('teamsResult');
   resultEl.innerHTML = `<div class="loading-box"><span class="spinner"></span> 팀 구성 계산 중…</div>`;
@@ -854,7 +1112,7 @@ async function balanceTeams(mode = 'balance') {
     const res  = await fetch('/api/balance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ players: sel, mode }),
+      body: JSON.stringify({ players: sel, mode, fixedGroups: fixedG, separateGroups: separateG }),
     });
     const data = await res.json();
     if (!res.ok) { resultEl.innerHTML = `<div class="err">${data.error}</div>`; return; }

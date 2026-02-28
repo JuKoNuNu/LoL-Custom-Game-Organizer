@@ -14,9 +14,14 @@ public class BalanceService {
         "BOTTOM", "원딜", "UTILITY", "서포터", "UNKNOWN", "미정"
     );
 
-    public Map<String, Object> balance(List<Map<String, Object>> players, String mode) {
+    public Map<String, Object> balance(List<Map<String, Object>> players, String mode,
+                                       List<List<Integer>> fixedGroups,
+                                       List<List<Integer>> separateGroups) {
         int n    = players.size();
         int half = n / 2;
+
+        if (fixedGroups == null)    fixedGroups    = List.of();
+        if (separateGroups == null) separateGroups = List.of();
 
         List<Map<String, Object>> t1Data = new ArrayList<>();
         List<Map<String, Object>> t2Data = new ArrayList<>();
@@ -34,6 +39,8 @@ public class BalanceService {
 
             for (List<Integer> combo : allCombos) {
                 Set<Integer> comboSet = new HashSet<>(combo);
+                if (!isValidSplit(comboSet, n, fixedGroups, separateGroups)) continue;
+
                 List<Map<String, Object>> t1Players = combo.stream()
                     .map(players::get).collect(Collectors.toList());
                 List<Map<String, Object>> t2Players = new ArrayList<>();
@@ -80,20 +87,52 @@ public class BalanceService {
             order.sort((a, b) -> Double.compare(getScore(players.get(b)), getScore(players.get(a))));
 
             List<Integer> t1I = new ArrayList<>(), t2I = new ArrayList<>();
+            Set<Integer> t1Set = new HashSet<>(), t2Set = new HashSet<>();
+
+            // Pre-assign fixed group members together
             for (int i : order) {
-                if (t1I.size() < half && (t2I.size() == half || s1 <= s2)) {
-                    t1I.add(i); s1 += getScore(players.get(i));
+                // Check if this player is in a fixed group with someone already assigned
+                int forcedTeam = getForcedTeam(i, t1Set, t2Set, fixedGroups);
+                // Check separation constraints
+                int separateForce = getSeparateForce(i, t1Set, t2Set, separateGroups);
+
+                int team = 0; // 0=undecided, 1=team1, 2=team2
+                if (forcedTeam != 0) team = forcedTeam;
+                if (separateForce != 0) {
+                    if (team != 0 && team != separateForce) {
+                        // Conflict — fixed says one team, separate says other. Fixed wins.
+                    } else if (team == 0) {
+                        team = separateForce;
+                    }
+                }
+
+                if (team == 1 && t1I.size() < half) {
+                    t1I.add(i); t1Set.add(i); s1 += getScore(players.get(i));
+                } else if (team == 2 && t2I.size() < (n - half)) {
+                    t2I.add(i); t2Set.add(i); s2 += getScore(players.get(i));
+                } else if (t1I.size() < half && (t2I.size() >= (n - half) || s1 <= s2)) {
+                    t1I.add(i); t1Set.add(i); s1 += getScore(players.get(i));
                 } else {
-                    t2I.add(i); s2 += getScore(players.get(i));
+                    t2I.add(i); t2Set.add(i); s2 += getScore(players.get(i));
                 }
             }
             for (int i : t1I) t1Data.add(new LinkedHashMap<>(players.get(i)));
             for (int i : t2I) t2Data.add(new LinkedHashMap<>(players.get(i)));
 
         } else {
+            // Random mode with constraints
             List<Integer> indices = new ArrayList<>();
             for (int i = 0; i < n; i++) indices.add(i);
-            Collections.shuffle(indices);
+
+            boolean valid = false;
+            for (int attempt = 0; attempt < 1000; attempt++) {
+                Collections.shuffle(indices);
+                Set<Integer> team1Set = new HashSet<>(indices.subList(0, half));
+                if (isValidSplit(team1Set, n, fixedGroups, separateGroups)) {
+                    valid = true;
+                    break;
+                }
+            }
 
             for (int i : indices.subList(0, half)) t1Data.add(new LinkedHashMap<>(players.get(i)));
             for (int i : indices.subList(half, n))  t2Data.add(new LinkedHashMap<>(players.get(i)));
@@ -185,6 +224,68 @@ public class BalanceService {
         }
     }
 
+
+    /**
+     * Check if a team1 split satisfies all fixed and separate constraints.
+     */
+    private boolean isValidSplit(Set<Integer> team1Set, int n,
+                                  List<List<Integer>> fixedGroups,
+                                  List<List<Integer>> separateGroups) {
+        // Fixed groups: all members must be on same team
+        for (List<Integer> group : fixedGroups) {
+            if (group.size() < 2) continue;
+            boolean first = team1Set.contains(group.get(0));
+            for (int i = 1; i < group.size(); i++) {
+                if (team1Set.contains(group.get(i)) != first) return false;
+            }
+        }
+        // Separate groups: for each pair, must be on different teams
+        for (List<Integer> group : separateGroups) {
+            if (group.size() < 2) continue;
+            for (int i = 0; i < group.size(); i++) {
+                for (int j = i + 1; j < group.size(); j++) {
+                    boolean iInT1 = team1Set.contains(group.get(i));
+                    boolean jInT1 = team1Set.contains(group.get(j));
+                    if (iInT1 == jInT1) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * For greedy balance: check if player must go to a specific team due to fixed group constraints.
+     * Returns 0=undecided, 1=team1, 2=team2
+     */
+    private int getForcedTeam(int playerIdx, Set<Integer> team1Set, Set<Integer> team2Set,
+                               List<List<Integer>> fixedGroups) {
+        for (List<Integer> group : fixedGroups) {
+            if (!group.contains(playerIdx)) continue;
+            for (int member : group) {
+                if (member == playerIdx) continue;
+                if (team1Set.contains(member)) return 1;
+                if (team2Set.contains(member)) return 2;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * For greedy balance: check if player must go to a specific team due to separate constraints.
+     * Returns 0=undecided, 1=team1, 2=team2
+     */
+    private int getSeparateForce(int playerIdx, Set<Integer> team1Set, Set<Integer> team2Set,
+                                  List<List<Integer>> separateGroups) {
+        for (List<Integer> group : separateGroups) {
+            if (!group.contains(playerIdx)) continue;
+            for (int member : group) {
+                if (member == playerIdx) continue;
+                if (team1Set.contains(member)) return 2; // must go to opposite team
+                if (team2Set.contains(member)) return 1;
+            }
+        }
+        return 0;
+    }
 
     private List<int[]> generatePermutations(int n) {
         List<int[]> result = new ArrayList<>();
