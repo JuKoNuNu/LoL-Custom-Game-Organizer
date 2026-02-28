@@ -321,6 +321,11 @@ section { margin-top: 28px; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.loading-box {
+  text-align: center; color: var(--muted); padding: 30px;
+  font-size: 0.9rem;
+}
+
 /* ── SAVED SUMMONERS ── */
 .saved-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .saved-item {
@@ -339,11 +344,6 @@ section { margin-top: 28px; }
 .btn-icon:hover { border-color: var(--gold); color: var(--gold); }
 .btn-icon:disabled { opacity: .4; cursor: not-allowed; }
 
-.loading-box {
-  text-align: center; color: var(--muted); padding: 30px;
-  font-size: 0.9rem;
-}
-
 /* ── CONSTRAINT GROUPS ── */
 .constraint-section {
   margin-top: 16px; padding: 14px;
@@ -359,16 +359,14 @@ section { margin-top: 28px; }
 .constraint-body { display: none; }
 .constraint-body.open { display: block; }
 .constraint-desc {
-  font-size: 0.72rem; color: var(--muted); margin-bottom: 10px;
-  line-height: 1.5;
+  font-size: 0.72rem; color: var(--muted); margin-bottom: 10px; line-height: 1.5;
 }
 .group-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
 }
 .group-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;
 }
 .group-label { font-size: 0.8rem; font-weight: 700; }
 .group-members { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -378,8 +376,7 @@ section { margin-top: 28px; }
   border-radius: 4px; padding: 3px 8px; font-size: 0.75rem;
 }
 .group-member .rm {
-  cursor: pointer; color: var(--muted); font-size: 0.7rem;
-  margin-left: 2px;
+  cursor: pointer; color: var(--muted); font-size: 0.7rem; margin-left: 2px;
 }
 .group-member .rm:hover { color: #ef5350; }
 .group-add-btn {
@@ -405,7 +402,7 @@ section { margin-top: 28px; }
   border-radius: 4px; transition: background .15s;
 }
 .group-player-option:hover { background: var(--surface); }
-.group-player-option.disabled { opacity: 0.35; cursor: not-allowed; }
+.group-player-option.disabled { opacity: .35; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -433,6 +430,9 @@ section { margin-top: 28px; }
     <div class="sec-title" style="display:flex;align-items:center;gap:12px">
       저장된 소환사
       <span style="color:var(--muted);font-weight:400;font-size:0.78rem">캐시에서 바로 불러오기</span>
+      <button class="btn btn-gold" id="loadAllBtn" onclick="loadAllSaved()" style="margin-left:8px;padding:4px 12px;font-size:0.78rem">
+        전체 불러오기
+      </button>
       <button class="btn-icon" id="refreshAllBtn" onclick="refreshAllSaved()" style="margin-left:auto;padding:4px 12px;font-size:0.78rem">
         ↻ 전체 새로고침
       </button>
@@ -656,6 +656,7 @@ function renderCards() {
           <div class="p-sub">Lv.${p.level} · #${p.tagLine} · <span style="font-weight:700;color:var(--gold)">${p.score.toLocaleString()}pt</span></div>
           <div style="margin-top:4px"><span class="lane-tag">${p.primaryLaneKo} (${p.primaryLaneWr || 0}%)</span></div>
         </div>
+        <div class="p-score" style="margin-left:auto;font-size:1.1rem;font-weight:700;color:var(--gold)">${p.score.toLocaleString()}</div>
       </div>
 
       ${rank ? `
@@ -897,7 +898,6 @@ function renderLanes() {
   LANES.forEach(lane => {
     const col     = document.getElementById(`lane-${lane}`);
     const header  = col.querySelector('.lane-head').outerHTML;
-    // 해당 라인 플레이 횟수 있는 플레이어 모두 포함 (주+부 라인)
     const lp = players
       .filter(p => (p.laneCounts?.[lane] || 0) > 0)
       .sort((a, b) => b.score - a.score);
@@ -906,7 +906,6 @@ function renderLanes() {
       col.innerHTML = header + `<div class="lane-empty">없음</div>`;
       return;
     }
-    // 라인별 점수로 재정렬
     lp.sort((a, b) => calcLaneStats(b, lane).score - calcLaneStats(a, lane).score);
 
     col.innerHTML = header + lp.map((p, i) => {
@@ -970,11 +969,9 @@ function updateSelCount() {
 }
 
 // ── 고정/분리 그룹 관리 ──────────────────────────────────────────────
-// fixedGroupsData: [[displayName, ...], ...]
-// separateGroupsData: [[displayName, ...], ...]
 let fixedGroupsData = [];
 let separateGroupsData = [];
-let activeDropdown = null; // track open dropdown
+let activeDropdown = null;
 
 function toggleConstraint(type) {
   const body  = document.getElementById(`${type}Body`);
@@ -1022,7 +1019,6 @@ function showPlayerSelect(type, groupIdx, btnEl) {
     dropdown.innerHTML = `<div style="padding:8px;color:var(--muted);font-size:0.75rem">참가 인원을 먼저 선택하세요</div>`;
   }
 
-  btnEl.style.position = 'relative';
   btnEl.parentElement.style.position = 'relative';
   dropdown.style.top = '100%';
   dropdown.style.left = '0';
@@ -1035,17 +1031,12 @@ function showPlayerSelect(type, groupIdx, btnEl) {
 }
 
 function closeDropdown() {
-  if (activeDropdown) {
-    activeDropdown.remove();
-    activeDropdown = null;
-  }
+  if (activeDropdown) { activeDropdown.remove(); activeDropdown = null; }
 }
 
 function addMemberToGroup(type, groupIdx, displayName) {
   const data = type === 'fixed' ? fixedGroupsData : separateGroupsData;
-  if (!data[groupIdx].includes(displayName)) {
-    data[groupIdx].push(displayName);
-  }
+  if (!data[groupIdx].includes(displayName)) data[groupIdx].push(displayName);
   closeDropdown();
   renderGroups(type);
 }
@@ -1077,7 +1068,6 @@ function renderGroups(type) {
   `).join('');
 }
 
-// Clean up groups when players are removed
 function cleanupGroups() {
   const selNames = new Set(players.filter(p => selected.has(p.displayName)).map(p => p.displayName));
   [fixedGroupsData, separateGroupsData].forEach(groups => {
@@ -1134,8 +1124,8 @@ function renderTeams(data) {
     // 랜덤 라인 배정인 경우 할당된 라인을 강조해서 표시
     const laneDisplay = p.assignedLaneKo 
       ? `<span class="lane-tag" style="background:var(--gold);color:#0a0e1a;border-color:var(--gold)">${p.assignedLaneKo}</span>
-         <span style="font-size:0.65rem;color:var(--muted)"> (주:${p.primaryLaneKo} ${p.primaryLaneWr || 0}%)</span>`
-      : `<span class="lane-tag">${p.primaryLaneKo} (${p.primaryLaneWr || 0}%)</span>`;
+         <span style="font-size:0.65rem;color:var(--muted)"> (주:${p.primaryLaneKo})</span>`
+      : `<span class="lane-tag">${p.primaryLaneKo}</span>`;
 
     return `
     <div class="team-player">
@@ -1286,19 +1276,19 @@ async function loadTimeline(matchId, pid, tlId) {
 }
 
 // ── 저장된 소환사 ──────────────────────────────────────────────────────────
-async function loadSavedPlayers() {
-  try {
-    const res  = await fetch('/api/summoners');
-    if (!res.ok) return;
-    renderSavedList(await res.json());
-  } catch (e) { /* ignore */ }
-}
-
 const TIER_KO_SHORT = {
   IRON:'아이언', BRONZE:'브론즈', SILVER:'실버', GOLD:'골드',
   PLATINUM:'플래티넘', EMERALD:'에메랄드', DIAMOND:'다이아',
   MASTER:'마스터', GRANDMASTER:'그랜마', CHALLENGER:'챌린저',
 };
+
+async function loadSavedPlayers() {
+  try {
+    const res = await fetch('/api/summoners');
+    if (!res.ok) return;
+    renderSavedList(await res.json());
+  } catch (e) { /* ignore */ }
+}
 
 function renderSavedList(summaries) {
   const section = document.getElementById('savedSection');
@@ -1321,7 +1311,7 @@ function renderSavedList(summaries) {
           ${s.gameName}<span style="color:var(--muted);font-weight:400"> #${s.tagLine}</span>
         </div>
         <div class="saved-item-meta" style="color:${color}">${tier}${rankStr}${lpStr}
-          <span style="color:var(--muted)"> · ${s.cachedAt}</span>
+          <span style="color:var(--muted)"> · ${s.cachedAt || ''}</span>
         </div>
       </div>
       <button class="btn btn-gold" style="padding:4px 10px;font-size:0.76rem;flex-shrink:0"
@@ -1351,12 +1341,37 @@ async function loadFromSaved(displayName) {
   } catch (e) { errEl.textContent = '오류: ' + e.message; }
 }
 
-async function deleteSaved(displayName) {
-  if (!confirm(`'${displayName}' 를 저장 목록에서 삭제할까요?`)) return;
+async function loadAllSaved() {
+  const btn = document.getElementById('loadAllBtn');
+  btn.disabled = true;
+  const orig = btn.textContent;
+
   try {
-    await fetch(`/api/summoner/${encodeURIComponent(displayName)}`, { method: 'DELETE' });
+    const res = await fetch('/api/summoners');
+    const summaries = await res.json();
+    if (!summaries.length) { btn.textContent = orig; btn.disabled = false; return; }
+
+    let loaded = 0;
+    for (const s of summaries) {
+      if (players.find(p => p.displayName === s.displayName)) continue;
+      btn.textContent = `(${++loaded}) ${s.gameName} 불러오는 중…`;
+      try {
+        const r    = await fetch(`/api/player/${encodeURIComponent(s.displayName)}`);
+        const data = await r.json();
+        if (r.ok) {
+          players.push(data);
+          selected.add(data.displayName);
+        }
+      } catch (e) { /* 개별 실패 무시 */ }
+    }
+    renderAll();
     loadSavedPlayers();
-  } catch (e) { alert('오류: ' + e.message); }
+    btn.textContent = '✓ 완료';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  } catch (e) {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
 }
 
 async function refreshAllSaved() {
@@ -1376,13 +1391,11 @@ async function refreshAllSaved() {
         const r    = await fetch(`/api/player/${encodeURIComponent(s.displayName)}?refresh=true`);
         const data = await r.json();
         if (r.ok) {
-          // 현재 세션에 추가된 플레이어면 데이터도 갱신
           const idx = players.findIndex(p => p.displayName === s.displayName);
           if (idx !== -1) players[idx] = data;
         }
-      } catch (e) { /* 개별 실패 무시하고 다음 진행 */ }
+      } catch (e) { /* 개별 실패 무시 */ }
     }
-
     renderAll();
     loadSavedPlayers();
     btn.textContent = '✓ 완료';
@@ -1391,6 +1404,14 @@ async function refreshAllSaved() {
     btn.textContent = orig;
     btn.disabled = false;
   }
+}
+
+async function deleteSaved(displayName) {
+  if (!confirm(`'${displayName}' 를 저장 목록에서 삭제할까요?`)) return;
+  try {
+    await fetch(`/api/summoner/${encodeURIComponent(displayName)}`, { method: 'DELETE' });
+    loadSavedPlayers();
+  } catch (e) { alert('오류: ' + e.message); }
 }
 
 async function refreshPlayer(displayName) {
@@ -1405,7 +1426,7 @@ async function refreshPlayer(displayName) {
     const idx = players.findIndex(p => p.displayName === displayName);
     if (idx !== -1) players[idx] = data;
     renderAll();
-    loadSavedPlayers();
+    await loadSavedPlayers();
   } catch (e) {
     document.getElementById('inputErr').textContent = '오류: ' + e.message;
   }
