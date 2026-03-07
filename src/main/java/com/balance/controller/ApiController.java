@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -108,7 +109,14 @@ public class ApiController {
                     .map(g -> g.stream().map(v -> ((Number) v).intValue()).collect(java.util.stream.Collectors.toList()))
                     .collect(java.util.stream.Collectors.toList())
                 : List.of();
-            return ResponseEntity.ok(balanceService.balance(players, mode, fixedGroups, separateGroups));
+            Map<Integer, String> laneLocks = new HashMap<>();
+            if (body.containsKey("laneLocks")) {
+                Map<?, ?> raw = (Map<?, ?>) body.get("laneLocks");
+                for (Map.Entry<?, ?> e : raw.entrySet()) {
+                    laneLocks.put(Integer.parseInt(e.getKey().toString()), e.getValue().toString());
+                }
+            }
+            return ResponseEntity.ok(balanceService.balance(players, mode, fixedGroups, separateGroups, laneLocks));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }

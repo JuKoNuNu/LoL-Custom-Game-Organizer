@@ -403,6 +403,26 @@ section { margin-top: 28px; }
 }
 .group-player-option:hover { background: var(--surface); }
 .group-player-option.disabled { opacity: .35; cursor: not-allowed; }
+
+/* ── LANE LOCK ── */
+.lane-lock-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.lane-lock-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+}
+.lane-lock-name { font-size: 0.82rem; font-weight: 600; flex: 1; }
+.lane-lock-select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 4px; padding: 4px 8px; font-size: 0.78rem;
+  font-family: inherit; cursor: pointer;
+}
+.lane-lock-select:focus { border-color: var(--gold); outline: none; }
+.lane-lock-rm {
+  cursor: pointer; color: var(--muted); font-size: 0.75rem;
+  background: none; border: none; padding: 2px 4px;
+}
+.lane-lock-rm:hover { color: #ef5350; }
 </style>
 </head>
 <body>
@@ -518,6 +538,23 @@ section { margin-top: 28px; }
         </div>
         <div id="separateGroups"></div>
         <button class="add-group-btn" onclick="addGroup('separate')">+ 분리그룹 추가</button>
+      </div>
+    </div>
+
+    <!-- 라인 고정 -->
+    <div class="constraint-section" style="margin-top:8px">
+      <div class="constraint-title" onclick="toggleConstraint('laneLock')">
+        <span class="arrow" id="laneLockArrow">▶</span>
+        <span style="color:#4fc3f7">라인 고정</span>
+        <span id="laneLockCount" style="color:var(--muted);font-weight:400;font-size:0.75rem"></span>
+      </div>
+      <div class="constraint-body" id="laneLockBody">
+        <div class="constraint-desc">
+          * 특정 플레이어의 라인을 고정합니다. 밸런스 팀 짜기 시 해당 라인으로 배정됩니다.<br>
+          * 같은 라인에 2명 이상 고정하면 같은 팀이 될 수 없으니 주의하세요.
+        </div>
+        <div class="lane-lock-list" id="laneLockList"></div>
+        <button class="add-group-btn" onclick="showLaneLockPlayerSelect(this)">+ 플레이어 추가</button>
       </div>
     </div>
 
@@ -1085,6 +1122,83 @@ function cleanupGroups() {
   });
   renderGroups('fixed');
   renderGroups('separate');
+  cleanupLaneLocks();
+}
+
+// ── 라인 고정 관리 ────────────────────────────────────────────────────
+let laneLockData = {}; // { displayName: "LANE" }
+
+function showLaneLockPlayerSelect(btnEl) {
+  closeDropdown();
+  const selPlayers = players.filter(p => selected.has(p.displayName));
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'group-player-select';
+  dropdown.innerHTML = selPlayers.map(p => {
+    const locked = p.displayName in laneLockData;
+    return `<div class="group-player-option${locked ? ' disabled' : ''}"
+      onclick="${locked ? '' : `addLaneLock('${esc(p.displayName)}')`}">
+      ${p.gameName}${locked ? ' (추가됨)' : ''}
+    </div>`;
+  }).join('');
+
+  if (!selPlayers.length) {
+    dropdown.innerHTML = `<div style="padding:8px;color:var(--muted);font-size:0.75rem">참가 인원을 먼저 선택하세요</div>`;
+  }
+
+  btnEl.parentElement.style.position = 'relative';
+  dropdown.style.top = '100%';
+  dropdown.style.left = '0';
+  btnEl.parentElement.appendChild(dropdown);
+  activeDropdown = dropdown;
+
+  setTimeout(() => {
+    document.addEventListener('click', closeDropdown, { once: true });
+  }, 0);
+}
+
+function addLaneLock(displayName) {
+  const p = players.find(pl => pl.displayName === displayName);
+  laneLockData[displayName] = p?.primaryLane || 'TOP';
+  closeDropdown();
+  renderLaneLocks();
+}
+
+function removeLaneLock(displayName) {
+  delete laneLockData[displayName];
+  renderLaneLocks();
+}
+
+function changeLaneLock(displayName, lane) {
+  laneLockData[displayName] = lane;
+  renderLaneLocks();
+}
+
+function renderLaneLocks() {
+  const list = document.getElementById('laneLockList');
+  const countEl = document.getElementById('laneLockCount');
+  const entries = Object.entries(laneLockData);
+  countEl.textContent = entries.length > 0 ? `( ${entries.length}명 )` : '';
+
+  list.innerHTML = entries.map(([dn, lane]) => {
+    const p = players.find(pl => pl.displayName === dn);
+    if (!p) return '';
+    return `<div class="lane-lock-row">
+      <span class="lane-lock-name">${p.gameName}</span>
+      <select class="lane-lock-select" onchange="changeLaneLock('${esc(dn)}', this.value)">
+        ${LANES.map(l => `<option value="${l}" ${l === lane ? 'selected' : ''}>${LANE_KO[l]}</option>`).join('')}
+      </select>
+      <button class="lane-lock-rm" onclick="removeLaneLock('${esc(dn)}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function cleanupLaneLocks() {
+  const selNames = new Set(players.filter(p => selected.has(p.displayName)).map(p => p.displayName));
+  for (const dn of Object.keys(laneLockData)) {
+    if (!selNames.has(dn)) delete laneLockData[dn];
+  }
+  renderLaneLocks();
 }
 
 // ── 팀 구성 ────────────────────────────────────────────────────────
@@ -1109,7 +1223,15 @@ async function balanceTeams(mode = 'balance') {
     const res  = await fetch('/api/balance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ players: sel, mode, fixedGroups: fixedG, separateGroups: separateG }),
+      body: JSON.stringify({
+        players: sel, mode,
+        fixedGroups: fixedG, separateGroups: separateG,
+        laneLocks: Object.fromEntries(
+          Object.entries(laneLockData)
+            .map(([dn, lane]) => [selNames.indexOf(dn), lane])
+            .filter(([idx]) => idx !== -1)
+        ),
+      }),
     });
     const data = await res.json();
     if (!res.ok) { resultEl.innerHTML = `<div class="err">${data.error}</div>`; return; }

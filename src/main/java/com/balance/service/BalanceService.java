@@ -16,12 +16,14 @@ public class BalanceService {
 
     public Map<String, Object> balance(List<Map<String, Object>> players, String mode,
                                        List<List<Integer>> fixedGroups,
-                                       List<List<Integer>> separateGroups) {
+                                       List<List<Integer>> separateGroups,
+                                       Map<Integer, String> laneLocks) {
         int n    = players.size();
         int half = n / 2;
 
         if (fixedGroups == null)    fixedGroups    = List.of();
         if (separateGroups == null) separateGroups = List.of();
+        if (laneLocks == null)      laneLocks      = Map.of();
 
         List<Map<String, Object>> t1Data = new ArrayList<>();
         List<Map<String, Object>> t2Data = new ArrayList<>();
@@ -47,8 +49,27 @@ public class BalanceService {
                 for (int i = 0; i < n; i++)
                     if (!comboSet.contains(i)) t2Players.add(players.get(i));
 
-                Object[] t1Assign = getBestAssignment(t1Players, allPerms);
-                Object[] t2Assign = getBestAssignment(t2Players, allPerms);
+                // Build per-team lane locks (remap global indices to team-local indices)
+                Map<Integer, String> t1Locks = new HashMap<>();
+                Map<Integer, String> t2Locks = new HashMap<>();
+                for (Map.Entry<Integer, String> le : laneLocks.entrySet()) {
+                    int gi = le.getKey();
+                    if (comboSet.contains(gi)) {
+                        t1Locks.put(combo.indexOf(gi), le.getValue());
+                    } else {
+                        // find local index in t2
+                        int li = 0;
+                        for (int i = 0; i < n; i++) {
+                            if (!comboSet.contains(i)) {
+                                if (i == gi) { t2Locks.put(li, le.getValue()); break; }
+                                li++;
+                            }
+                        }
+                    }
+                }
+
+                Object[] t1Assign = getBestAssignment(t1Players, allPerms, t1Locks);
+                Object[] t2Assign = getBestAssignment(t2Players, allPerms, t2Locks);
 
                 int    totalM = (int)t1Assign[1] + (int)t2Assign[1];
                 double diff   = Math.abs((double)t1Assign[2] - (double)t2Assign[2]);
@@ -140,8 +161,19 @@ public class BalanceService {
             s2 = t2Data.stream().mapToDouble(this::getScore).sum();
 
             if (n == 10) {
-                assignRandomLanes(t1Data);
-                assignRandomLanes(t2Data);
+                // Remap laneLocks: global indices -> team-local indices
+                Map<Integer, String> t1Locks = new HashMap<>();
+                Map<Integer, String> t2Locks = new HashMap<>();
+                List<Integer> t1Indices = new ArrayList<>(indices.subList(0, half));
+                List<Integer> t2Indices = new ArrayList<>(indices.subList(half, n));
+                for (Map.Entry<Integer, String> le : laneLocks.entrySet()) {
+                    int li1 = t1Indices.indexOf(le.getKey());
+                    if (li1 >= 0) t1Locks.put(li1, le.getValue());
+                    int li2 = t2Indices.indexOf(le.getKey());
+                    if (li2 >= 0) t2Locks.put(li2, le.getValue());
+                }
+                assignRandomLanes(t1Data, t1Locks);
+                assignRandomLanes(t2Data, t2Locks);
             }
         }
 
@@ -182,12 +214,25 @@ public class BalanceService {
         return v instanceof String ? (String) v : "";
     }
 
-    private Object[] getBestAssignment(List<Map<String, Object>> team, List<int[]> allPerms) {
+    private Object[] getBestAssignment(List<Map<String, Object>> team, List<int[]> allPerms,
+                                       Map<Integer, String> laneLocks) {
         int    bestM     = -1;
         double bestScore = 0;
         List<Object[]> bestAssignment = null;
 
         for (int[] perm : allPerms) {
+            // Check lane lock constraints: locked player must be at the locked lane position
+            boolean valid = true;
+            for (Map.Entry<Integer, String> le : laneLocks.entrySet()) {
+                int playerIdx = le.getKey();
+                String requiredLane = le.getValue();
+                int requiredPos = LANES_LIST.indexOf(requiredLane);
+                if (requiredPos < 0) continue;
+                // perm[requiredPos] should be playerIdx
+                if (perm[requiredPos] != playerIdx) { valid = false; break; }
+            }
+            if (!valid) continue;
+
             int    m     = 0;
             double score = 0;
             for (int i = 0; i < 5; i++) {
@@ -214,12 +259,30 @@ public class BalanceService {
         return new Object[]{ bestAssignment, bestM, bestScore };
     }
 
-    private void assignRandomLanes(List<Map<String, Object>> team) {
-        List<String> roles = new ArrayList<>(LANES_LIST);
-        Collections.shuffle(roles);
-        for (int i = 0; i < team.size() && i < roles.size(); i++) {
-            String lane = roles.get(i);
-            team.get(i).put("assignedLane",   lane);
+    private void assignRandomLanes(List<Map<String, Object>> team, Map<Integer, String> laneLocks) {
+        // Identify which lanes are already locked
+        Set<String> usedLanes = new HashSet<>();
+        Set<Integer> lockedPlayers = new HashSet<>();
+        for (Map.Entry<Integer, String> le : laneLocks.entrySet()) {
+            int idx = le.getKey();
+            if (idx >= 0 && idx < team.size()) {
+                team.get(idx).put("assignedLane", le.getValue());
+                team.get(idx).put("assignedLaneKo", LANE_KO.getOrDefault(le.getValue(), le.getValue()));
+                usedLanes.add(le.getValue());
+                lockedPlayers.add(idx);
+            }
+        }
+        // Shuffle remaining lanes for unlocked players
+        List<String> remaining = new ArrayList<>();
+        for (String lane : LANES_LIST) {
+            if (!usedLanes.contains(lane)) remaining.add(lane);
+        }
+        Collections.shuffle(remaining);
+        int ri = 0;
+        for (int i = 0; i < team.size() && ri < remaining.size(); i++) {
+            if (lockedPlayers.contains(i)) continue;
+            String lane = remaining.get(ri++);
+            team.get(i).put("assignedLane", lane);
             team.get(i).put("assignedLaneKo", LANE_KO.getOrDefault(lane, lane));
         }
     }
