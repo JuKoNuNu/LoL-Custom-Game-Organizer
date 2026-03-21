@@ -864,35 +864,16 @@ function renderCards() {
 
           matchHtml = `
           <div style="margin-top:16px;display:flex;gap:4px;margin-bottom:8px">
-            <button class="btn btn-ghost" style="padding:6px 14px;font-size:0.75rem" onclick="this.parentElement.nextElementSibling.dataset.tab='ranked';this.classList.add('on');this.nextElementSibling.classList.remove('on')"
-              id="tab_r_${uid}">📊 랭크 ${hasRanked ? rWins+'승 '+(rMs.length-rWins)+'패' : '없음'}</button>
-            <button class="btn btn-ghost" style="padding:6px 14px;font-size:0.75rem" onclick="this.parentElement.nextElementSibling.dataset.tab='custom';this.classList.add('on');this.previousElementSibling.classList.remove('on')"
-              id="tab_c_${uid}">⚔ 사설 ${hasCustom ? cWins+'승 '+cLosses+'패' : '없음'}</button>
+            <button class="btn btn-ghost on" style="padding:6px 14px;font-size:0.75rem" onclick="switchMatchTab(this,'ranked','${uid}')">📊 랭크 ${hasRanked ? rWins+'승 '+(rMs.length-rWins)+'패' : '없음'}</button>
+            <button class="btn btn-ghost" style="padding:6px 14px;font-size:0.75rem" onclick="switchMatchTab(this,'custom','${uid}')">⚔ 사설 ${hasCustom ? cWins+'승 '+cLosses+'패' : '없음'}</button>
           </div>
-          <div data-tab="ranked">
-            <div class="match-tab-ranked">
-              ${hasRanked ? `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">랭크 전적 <span style="color:${rWc}">${rWr}%</span> (${rMs.length}판)</div>
-              <div class="matches-list" style="display:block">${buildMatchRows(rMs, uid+'r')}</div>` : '<div style="color:var(--muted);font-size:0.75rem">랭크 전적 없음</div>'}
-            </div>
-            <div class="match-tab-custom" style="display:none">
-              ${hasCustom ? `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">사설 전적 <span style="color:${cWc}">${cWr}%</span> (${cWins+cLosses}판)</div>
-              ${customMostHtml}
-              <div class="matches-list" style="display:block">${buildMatchRows(cMs, uid+'c')}</div>` : '<div style="color:var(--muted);font-size:0.75rem">사설 전적 없음</div>'}
-            </div>
+          <div id="match_ranked_${uid}">
+              ${hasRanked ? '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">랭크 전적 <span style="color:' + rWc + '">' + rWr + '%</span> (' + rMs.length + '판)</div><div class="matches-list" style="display:block">' + buildMatchRows(rMs, uid+'r') + '</div>' : '<div style="color:var(--muted);font-size:0.75rem">랭크 전적 없음</div>'}
+          </div>
+          <div id="match_custom_${uid}" style="display:none">
+              ${hasCustom ? '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">사설 전적 <span style="color:' + cWc + '">' + cWr + '%</span> (' + (cWins+cLosses) + '판)</div>' + customMostHtml + '<div class="matches-list" style="display:block">' + buildMatchRows(cMs, uid+'c') + '</div>' : '<div style="color:var(--muted);font-size:0.75rem">사설 전적 없음</div>'}
           </div>`;
         }
-
-        // 탭 전환 스크립트
-        matchHtml += `<script>
-          document.querySelectorAll('[id^="tab_r_${uid}"], [id^="tab_c_${uid}"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-              const container = btn.parentElement.nextElementSibling;
-              const isCustom = btn.id.startsWith('tab_c_');
-              container.querySelector('.match-tab-ranked').style.display = isCustom ? 'none' : '';
-              container.querySelector('.match-tab-custom').style.display = isCustom ? '' : 'none';
-            });
-          });
-        </script>`;
 
         return laneHtml + seasonMostHtml + masteryHtml + matchHtml;
       })()}
@@ -1425,6 +1406,15 @@ async function sendToDiscord() {
     btn.textContent = originalText;
     btn.disabled = false;
   }
+}
+
+function switchMatchTab(btn, tab, uid) {
+  // 버튼 활성화 전환
+  btn.parentElement.querySelectorAll('.btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  // 패널 전환
+  document.getElementById('match_ranked_' + uid).style.display = tab === 'ranked' ? '' : 'none';
+  document.getElementById('match_custom_' + uid).style.display = tab === 'custom' ? '' : 'none';
 }
 
 function toggleMatches(uid) {
