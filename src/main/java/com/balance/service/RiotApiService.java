@@ -210,16 +210,13 @@ public class RiotApiService {
 
         // 매치 ID를 최대 100개 가져옴 (랭크 + 사설 충분히 확보)
         List<String> matchIds = new ArrayList<>();
-        for (int start = 0; start < 200 && matchIds.size() < 200; start += 100) {
-            RiotResponse matchIdsResp = rget(
-                ASIA + "/lol/match/v5/matches/by-puuid/" + puuid + "/ids?start=" + start + "&count=100");
-            if (matchIdsResp.status() != 200 || matchIdsResp.body() == null || !matchIdsResp.body().isArray()) break;
-            int before = matchIds.size();
+        RiotResponse matchIdsResp = rget(
+            ASIA + "/lol/match/v5/matches/by-puuid/" + puuid + "/ids?count=100");
+        if (matchIdsResp.status() == 200 && matchIdsResp.body() != null && matchIdsResp.body().isArray()) {
             matchIdsResp.body().forEach(id -> matchIds.add(id.asText()));
-            if (matchIds.size() == before) break; // 더 이상 없음
         }
         int RANKED_LIMIT = 20;
-        int CUSTOM_LIMIT = 30;
+        int CUSTOM_LIMIT = 20;
 
         Map<String, Integer> laneCounts = new HashMap<>();
         Map<String, Map<String, Integer>> laneStats  = new HashMap<>();
