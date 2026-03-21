@@ -239,7 +239,9 @@ public class RiotApiService {
             if (minfo == null) continue;
 
             int queueId = minfo.path("queueId").asInt(-1);
-            boolean isCustom = (queueId == 0);
+            String gameType = minfo.path("gameType").asText("");
+            boolean isCustom = (queueId == 0 || "CUSTOM_GAME".equals(gameType));
+            System.out.println("[Match] " + mid + " queueId=" + queueId + " gameType=" + gameType + " custom=" + isCustom);
 
             for (JsonNode p : minfo.path("participants")) {
                 if (!puuid.equals(p.path("puuid").asText())) continue;
