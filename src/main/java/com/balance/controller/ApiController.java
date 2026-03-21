@@ -136,55 +136,37 @@ public class ApiController {
         }
     }
 
-    // ── POST /api/lane-history/save  (팀 결과 확정 시 라인 이력 저장)
-    @PostMapping("/api/lane-history/save")
-    @SuppressWarnings("unchecked")
-    public ResponseEntity<Map<String, Object>> saveLaneHistory(@RequestBody Map<String, Object> body) {
-        try {
-            Map<String, String> assignments = new HashMap<>();
-            List<Map<String, Object>> team1 = (List<Map<String, Object>>) body.get("team1");
-            List<Map<String, Object>> team2 = (List<Map<String, Object>>) body.get("team2");
-            if (team1 != null) {
-                for (Map<String, Object> p : team1) {
-                    String dn = (String) p.get("displayName");
-                    String lane = (String) p.get("assignedLane");
-                    if (dn != null && lane != null) assignments.put(dn, lane);
-                }
-            }
-            if (team2 != null) {
-                for (Map<String, Object> p : team2) {
-                    String dn = (String) p.get("displayName");
-                    String lane = (String) p.get("assignedLane");
-                    if (dn != null && lane != null) assignments.put(dn, lane);
-                }
-            }
-            laneHistoryService.saveGameResult(assignments);
-            return ResponseEntity.ok(Map.of("success", true));
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
-        }
-    }
-
-    // ── DELETE /api/lane-history  (이력 초기화)
-    @DeleteMapping("/api/lane-history")
-    public ResponseEntity<Map<String, Object>> clearLaneHistory() {
-        laneHistoryService.clearHistory();
-        return ResponseEntity.ok(Map.of("success", true));
-    }
-
-    // ── GET /api/lane-history  (현재 이력 조회)
-    @GetMapping("/api/lane-history")
-    public ResponseEntity<Map<String, Object>> getLaneHistory() {
-        // 전체 이력 간단 조회
-        Map<String, List<String>> all = laneHistoryService.getRecentHistory(List.of(), 10);
-        return ResponseEntity.ok(Map.of("history", all));
-    }
-
-    // ── POST /api/discord
+    // ── POST /api/discord  (디코 전송 + 라인 이력 자동 저장)
     @PostMapping("/api/discord")
+    @SuppressWarnings("unchecked")
     public ResponseEntity<Map<String, Object>> sendDiscord(@RequestBody Map<String, Object> body) {
         try {
             boolean success = discordService.sendTeamResult(body);
+
+            // 디코 전송 성공 시 라인 이력 자동 저장
+            if (success) {
+                Map<String, String> assignments = new HashMap<>();
+                List<Map<String, Object>> team1 = (List<Map<String, Object>>) body.get("team1");
+                List<Map<String, Object>> team2 = (List<Map<String, Object>>) body.get("team2");
+                if (team1 != null) {
+                    for (Map<String, Object> p : team1) {
+                        String dn = (String) p.get("displayName");
+                        String lane = (String) p.get("assignedLane");
+                        if (dn != null && lane != null) assignments.put(dn, lane);
+                    }
+                }
+                if (team2 != null) {
+                    for (Map<String, Object> p : team2) {
+                        String dn = (String) p.get("displayName");
+                        String lane = (String) p.get("assignedLane");
+                        if (dn != null && lane != null) assignments.put(dn, lane);
+                    }
+                }
+                if (!assignments.isEmpty()) {
+                    laneHistoryService.saveGameResult(assignments);
+                }
+            }
+
             return ResponseEntity.ok(Map.of("success", success));
         } catch (Exception e) {
             e.printStackTrace();

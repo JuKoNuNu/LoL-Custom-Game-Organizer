@@ -190,6 +190,15 @@ public class BalanceService {
         t1Data.sort(laneComp);
         t2Data.sort(laneComp);
 
+        // 최근 이력과 겹치는 라인 배정에 laneConflict 표시
+        int conflictCount = 0;
+        for (Map<String, Object> p : t1Data) {
+            if (markLaneConflict(p, laneHistory)) conflictCount++;
+        }
+        for (Map<String, Object> p : t2Data) {
+            if (markLaneConflict(p, laneHistory)) conflictCount++;
+        }
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("team1",       t1Data);
         result.put("team2",       t2Data);
@@ -198,7 +207,20 @@ public class BalanceService {
         result.put("scoreDiff",   Math.abs(s1 - s2));
         result.put("laneBalanced", laneBalanced);
         result.put("mode",        mode);
+        result.put("laneConflictCount", conflictCount);
         return result;
+    }
+
+    private boolean markLaneConflict(Map<String, Object> player, Map<String, List<String>> laneHistory) {
+        String assignedLane = (String) player.get("assignedLane");
+        if (assignedLane == null) return false;
+        String name = getPlayerDisplayName(player);
+        List<String> history = laneHistory.getOrDefault(name, List.of());
+        if (history.contains(assignedLane)) {
+            player.put("laneConflict", true);
+            return true;
+        }
+        return false;
     }
 
     private double getScore(Map<String, Object> player) {

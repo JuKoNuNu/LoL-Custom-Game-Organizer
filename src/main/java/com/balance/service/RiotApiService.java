@@ -141,6 +141,31 @@ public class RiotApiService {
         return new RiotResponse(status, body);
     }
 
+    /**
+     * 언랭 플레이어의 전적 기반 추정 점수.
+     * 기준: 실버4(800) ~ 골드1(1500) 범위에서 승률/KDA로 보정.
+     */
+    private int estimateUnrankedScore(List<Map<String, Object>> recentMatches) {
+        int wins = 0, total = recentMatches.size();
+        double kdaSum = 0;
+        for (Map<String, Object> m : recentMatches) {
+            if (Boolean.TRUE.equals(m.get("win"))) wins++;
+            Object kdaObj = m.get("kda");
+            if (kdaObj instanceof Number) kdaSum += ((Number) kdaObj).doubleValue();
+        }
+        double winRate = total > 0 ? (double) wins / total : 0.5;
+        double avgKda  = total > 0 ? kdaSum / total : 2.0;
+
+        // 기본 실버2(1000) 시작, 승률/KDA로 보정
+        int base = 1000;
+        // 승률 보정: 50% 기준, +-300점 범위
+        base += (int) ((winRate - 0.5) * 600);
+        // KDA 보정: 2.0 기준, +-200점 범위
+        base += (int) (Math.min(Math.max(avgKda - 2.0, -2.0), 3.0) * 100);
+        // 범위 제한: 실버4(800) ~ 골드1(1500)
+        return Math.max(800, Math.min(1500, base));
+    }
+
     public int calcScore(JsonNode entry) {
         if (entry == null || entry.isNull()) return 0;
         String t  = entry.path("tier").asText("IRON");
@@ -329,6 +354,11 @@ public class RiotApiService {
         int score;
         if (soloSc >= flexSc) { highest = fmtSolo; score = soloSc; }
         else                   { highest = fmtFlex; score = flexSc; }
+
+        // 언랭이면 전적 기반으로 추정 점수 부여
+        if (score == 0 && !recentMatches.isEmpty()) {
+            score = estimateUnrankedScore(recentMatches);
+        }
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("displayName",    gameName + "#" + tagLine);
