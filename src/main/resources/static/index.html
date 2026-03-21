@@ -707,6 +707,10 @@ function renderCards() {
         <div style="color:var(--muted);font-size:.82rem;margin:4px 0">언랭크</div>
       `}
 
+      <button class="matches-toggle" onclick="const d=this.nextElementSibling;d.style.display=d.style.display==='none'?'':'none';this.querySelector('.arrow').textContent=d.style.display==='none'?'▼':'▲'" style="margin-bottom:4px">
+        <span>상세 정보</span><span class="arrow">▼</span>
+      </button>
+      <div style="display:none">
       ${(() => {
         const uid = `pl${players.indexOf(p)}`;
         const totalScan = p.totalMatches || 30;
@@ -786,20 +790,30 @@ function renderCards() {
             </div>
           </div>` : '';
 
-        // 4. 상세 전적
-        let matchHtml = '';
-        if (p.recentMatches?.length) {
-          const ms = p.recentMatches;
-          const wins = ms.filter(m => m.win).length;
-          const wr = (wins / ms.length * 100).toFixed(0);
-          const wc = wr >= 55 ? '#3ecf78' : wr >= 50 ? '#dde4f0' : '#ef5350';
-          const rows = ms.map((m, idx) => {
+        // 4. 상세 전적 (랭크/사설 탭)
+        function buildMatchRows(ms, uidPrefix) {
+          return ms.map((m, idx) => {
             const kc = m.kda>=4?'#3ecf78':m.kda>=2.5?'#d4af37':'#ef5350';
-            const tlId = `${uid}_${idx}`;
+            const tlId = `${uidPrefix}_${idx}`;
             const itemImgs = (m.items || [0,0,0,0,0,0,0]).map(iid => {
               if (iid === 0) return `<div class="match-item"></div>`;
               return `<img class="match-item" src="https://ddragon.leagueoflegends.com/cdn/15.4.1/img/item/${iid}.png" onerror="this.style.display='none'" alt="${iid}">`;
             }).join('');
+
+            // 사설 게임 참가자 표시
+            let participantsHtml = '';
+            if (m.participants) {
+              const team100 = m.participants.filter(t => t.team === 100);
+              const team200 = m.participants.filter(t => t.team === 200);
+              const teamRow = (team, label, color) => team.map(t =>
+                `<span style="font-size:0.6rem;color:${t.win?'#3ecf78':'#ef5350'}">${t.gameName}(${t.champion} ${t.kills}/${t.deaths}/${t.assists})</span>`
+              ).join(' · ');
+              participantsHtml = `<div style="font-size:0.58rem;color:var(--muted);margin-top:2px;padding:3px 6px;background:rgba(255,255,255,0.02);border-radius:3px">
+                <div>🔵 ${teamRow(team100)}</div>
+                <div>🔴 ${teamRow(team200)}</div>
+              </div>`;
+            }
+
             return `<div class="match-row" style="flex-direction:column;align-items:flex-start;padding:6px 0">
               <div style="display:flex;width:100%;align-items:center;gap:5px">
                 <img class="match-champ" src="https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/${m.champion}_0.jpg" onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/champion/${m.champion}.png'" alt="${m.champion}">
@@ -810,15 +824,79 @@ function renderCards() {
                 <button class="tl-btn" onclick="loadTimeline('${m.matchId}',${m.participantId},'${tlId}')">상세</button>
               </div>
               <div class="match-items">${itemImgs}</div>
+              ${participantsHtml}
             </div><div class="tl-section" id="tl_${tlId}"></div>`;
           }).join('');
-          matchHtml = `<button class="matches-toggle" style="margin-top:16px" onclick="toggleMatches('${uid}')">
-            <span>최근 20판 전적 요약</span>
-            <span style="color:${wc}">${wins}승 ${ms.length-wins}패 (${wr}%) ▼</span>
-          </button><div class="matches-list" id="matches_${uid}" style="padding-top:6px">${rows}</div>`;
         }
+
+        let matchHtml = '';
+        const hasRanked = p.recentMatches?.length > 0;
+        const hasCustom = p.customMatches?.length > 0;
+
+        if (hasRanked || hasCustom) {
+          const rMs = p.recentMatches || [];
+          const cMs = p.customMatches || [];
+          const rWins = rMs.filter(m => m.win).length;
+          const cWins = p.customWins || cMs.filter(m => m.win).length;
+          const cLosses = p.customLosses || cMs.filter(m => !m.win).length;
+          const rWr = rMs.length > 0 ? (rWins / rMs.length * 100).toFixed(0) : 0;
+          const cWr = (cWins + cLosses) > 0 ? (cWins / (cWins + cLosses) * 100).toFixed(0) : 0;
+          const rWc = rWr >= 55 ? '#3ecf78' : rWr >= 50 ? '#dde4f0' : '#ef5350';
+          const cWc = cWr >= 55 ? '#3ecf78' : cWr >= 50 ? '#dde4f0' : '#ef5350';
+
+          // 사설 모스트 챔피언
+          let customMostHtml = '';
+          if (p.customMost?.length) {
+            customMostHtml = p.customMost.map(c => {
+              const wc2 = c.winRate >= 55 ? '#3ecf78' : c.winRate >= 50 ? '#dde4f0' : '#ef5350';
+              const kc2 = c.kda >= 4 ? '#3ecf78' : c.kda >= 2.5 ? '#d4af37' : '#ef5350';
+              return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;background:rgba(255,255,255,0.02);padding:3px 6px;border-radius:4px">
+                <img src="${c.imgUrl}" style="width:28px;height:28px;border-radius:4px;border:1px solid var(--border)" alt="${c.name}" onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/profileicon/29.png'">
+                <div style="flex:1;font-size:0.68rem">
+                  <div style="font-weight:700;font-size:0.72rem">${c.name}</div>
+                  <div style="color:var(--muted)">${c.games}판 · 승률 <span style="color:${wc2}">${c.winRate}%</span></div>
+                </div>
+                <div style="text-align:right;font-size:0.68rem;color:${kc2};font-weight:700">KDA ${c.kda}</div>
+              </div>`;
+            }).join('');
+            customMostHtml = `<div style="margin-top:8px;margin-bottom:8px"><div style="font-size:0.7rem;color:var(--muted);margin-bottom:6px;font-weight:700">사설 모스트</div>${customMostHtml}</div>`;
+          }
+
+          matchHtml = `
+          <div style="margin-top:16px;display:flex;gap:4px;margin-bottom:8px">
+            <button class="btn btn-ghost" style="padding:6px 14px;font-size:0.75rem" onclick="this.parentElement.nextElementSibling.dataset.tab='ranked';this.classList.add('on');this.nextElementSibling.classList.remove('on')"
+              id="tab_r_${uid}">📊 랭크 ${hasRanked ? rWins+'승 '+(rMs.length-rWins)+'패' : '없음'}</button>
+            <button class="btn btn-ghost" style="padding:6px 14px;font-size:0.75rem" onclick="this.parentElement.nextElementSibling.dataset.tab='custom';this.classList.add('on');this.previousElementSibling.classList.remove('on')"
+              id="tab_c_${uid}">⚔ 사설 ${hasCustom ? cWins+'승 '+cLosses+'패' : '없음'}</button>
+          </div>
+          <div data-tab="ranked">
+            <div class="match-tab-ranked">
+              ${hasRanked ? `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">랭크 전적 <span style="color:${rWc}">${rWr}%</span> (${rMs.length}판)</div>
+              <div class="matches-list" style="display:block">${buildMatchRows(rMs, uid+'r')}</div>` : '<div style="color:var(--muted);font-size:0.75rem">랭크 전적 없음</div>'}
+            </div>
+            <div class="match-tab-custom" style="display:none">
+              ${hasCustom ? `<div style="font-size:0.72rem;color:var(--muted);margin-bottom:4px">사설 전적 <span style="color:${cWc}">${cWr}%</span> (${cWins+cLosses}판)</div>
+              ${customMostHtml}
+              <div class="matches-list" style="display:block">${buildMatchRows(cMs, uid+'c')}</div>` : '<div style="color:var(--muted);font-size:0.75rem">사설 전적 없음</div>'}
+            </div>
+          </div>`;
+        }
+
+        // 탭 전환 스크립트
+        matchHtml += `<script>
+          document.querySelectorAll('[id^="tab_r_${uid}"], [id^="tab_c_${uid}"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const container = btn.parentElement.nextElementSibling;
+              const isCustom = btn.id.startsWith('tab_c_');
+              container.querySelector('.match-tab-ranked').style.display = isCustom ? 'none' : '';
+              container.querySelector('.match-tab-custom').style.display = isCustom ? '' : 'none';
+            });
+          });
+        </script>`;
+
         return laneHtml + seasonMostHtml + masteryHtml + matchHtml;
       })()}
+      </div>
       <div class="card-btns" style="display:flex;gap:4px">
         <button class="btn-icon" onclick="refreshPlayer('${esc(p.displayName)}')" title="Riot API에서 새로 불러오기">↻</button>
         <button class="btn btn-rm" onclick="removePlayer('${esc(p.displayName)}')">✕</button>

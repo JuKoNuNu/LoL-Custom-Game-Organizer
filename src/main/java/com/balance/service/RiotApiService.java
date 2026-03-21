@@ -208,25 +208,41 @@ public class RiotApiService {
             if ("RANKED_FLEX_SR".equals(queueType))  flex = entry;
         }
 
-        int MATCH_COUNT = 30;
-        RiotResponse matchIdsResp = rget(
-            ASIA + "/lol/match/v5/matches/by-puuid/" + puuid + "/ids?count=" + MATCH_COUNT);
+        // 매치 ID를 최대 100개 가져옴 (랭크 + 사설 충분히 확보)
         List<String> matchIds = new ArrayList<>();
-        if (matchIdsResp.status() == 200 && matchIdsResp.body() != null && matchIdsResp.body().isArray()) {
+        for (int start = 0; start < 200 && matchIds.size() < 200; start += 100) {
+            RiotResponse matchIdsResp = rget(
+                ASIA + "/lol/match/v5/matches/by-puuid/" + puuid + "/ids?start=" + start + "&count=100");
+            if (matchIdsResp.status() != 200 || matchIdsResp.body() == null || !matchIdsResp.body().isArray()) break;
+            int before = matchIds.size();
             matchIdsResp.body().forEach(id -> matchIds.add(id.asText()));
+            if (matchIds.size() == before) break; // 더 이상 없음
         }
+        int RANKED_LIMIT = 20;
+        int CUSTOM_LIMIT = 30;
 
         Map<String, Integer> laneCounts = new HashMap<>();
         Map<String, Map<String, Integer>> laneStats  = new HashMap<>();
         Map<String, Map<String, Object>> champStats  = new HashMap<>();
         List<Map<String, Object>> recentMatches = new ArrayList<>();
 
+        // 사설 게임 데이터
+        Map<String, Map<String, Object>> customChampStats = new HashMap<>();
+        List<Map<String, Object>> customMatches = new ArrayList<>();
+        int customWins = 0, customLosses = 0;
+
         for (String mid : matchIds) {
+            // 랭크/사설 둘 다 충분하면 중단
+            if (recentMatches.size() >= RANKED_LIMIT && customMatches.size() >= CUSTOM_LIMIT) break;
+
             RiotResponse matchResp = rget(ASIA + "/lol/match/v5/matches/" + mid);
             if (matchResp.status() != 200 || matchResp.body() == null) continue;
 
             JsonNode minfo = matchResp.body().get("info");
             if (minfo == null) continue;
+
+            int queueId = minfo.path("queueId").asInt(-1);
+            boolean isCustom = (queueId == 0);
 
             for (JsonNode p : minfo.path("participants")) {
                 if (!puuid.equals(p.path("puuid").asText())) continue;
@@ -238,47 +254,101 @@ public class RiotApiService {
                 int d = p.path("deaths").asInt(0);
                 int a = p.path("assists").asInt(0);
 
-                if (!pos.isEmpty()) {
-                    laneCounts.merge(pos, 1, Integer::sum);
-                    laneStats.computeIfAbsent(pos, x -> {
-                        Map<String, Integer> m = new HashMap<>();
-                        m.put("w", 0); m.put("l", 0); m.put("n", 0); return m;
+                if (isCustom) {
+                    // 사설 게임 통계
+                    if (isWin) customWins++; else customLosses++;
+                    customChampStats.computeIfAbsent(cname, x -> {
+                        Map<String, Object> m = new HashMap<>();
+                        m.put("w", 0); m.put("l", 0); m.put("k", 0);
+                        m.put("d", 0); m.put("a", 0); m.put("n", 0); return m;
                     });
-                    laneStats.get(pos).merge("n", 1, Integer::sum);
-                    laneStats.get(pos).merge(isWin ? "w" : "l", 1, Integer::sum);
-                }
+                    Map<String, Object> ccs = customChampStats.get(cname);
+                    ccs.put("n", (Integer)ccs.get("n") + 1);
+                    ccs.put("k", (Integer)ccs.get("k") + k);
+                    ccs.put("d", (Integer)ccs.get("d") + d);
+                    ccs.put("a", (Integer)ccs.get("a") + a);
+                    ccs.put(isWin ? "w" : "l", (Integer)ccs.get(isWin ? "w" : "l") + 1);
 
-                champStats.computeIfAbsent(cname, x -> {
-                    Map<String, Object> m = new HashMap<>();
-                    m.put("w", 0); m.put("l", 0); m.put("k", 0);
-                    m.put("d", 0); m.put("a", 0); m.put("n", 0); return m;
-                });
-                Map<String, Object> cs = champStats.get(cname);
-                cs.put("n", (Integer)cs.get("n") + 1);
-                cs.put("k", (Integer)cs.get("k") + k);
-                cs.put("d", (Integer)cs.get("d") + d);
-                cs.put("a", (Integer)cs.get("a") + a);
-                cs.put(isWin ? "w" : "l", (Integer)cs.get(isWin ? "w" : "l") + 1);
+                    if (customMatches.size() < CUSTOM_LIMIT) {
+                        int dur = minfo.path("gameDuration").asInt(0);
+                        List<Integer> items = new ArrayList<>();
+                        for (int i = 0; i < 7; i++) items.add(p.path("item" + i).asInt(0));
 
-                if (recentMatches.size() < 20) {
-                    int dur = minfo.path("gameDuration").asInt(0);
-                    List<Integer> items = new ArrayList<>();
-                    for (int i = 0; i < 7; i++) items.add(p.path("item" + i).asInt(0));
+                        // 사설 게임 참가자 목록
+                        List<Map<String, Object>> teammates = new ArrayList<>();
+                        for (JsonNode pp : minfo.path("participants")) {
+                            Map<String, Object> tm = new LinkedHashMap<>();
+                            tm.put("gameName", pp.path("riotIdGameName").asText(""));
+                            tm.put("tagLine", pp.path("riotIdTagline").asText(""));
+                            tm.put("champion", pp.path("championName").asText(""));
+                            tm.put("team", pp.path("teamId").asInt(0));
+                            tm.put("kills", pp.path("kills").asInt(0));
+                            tm.put("deaths", pp.path("deaths").asInt(0));
+                            tm.put("assists", pp.path("assists").asInt(0));
+                            tm.put("win", pp.path("win").asBoolean(false));
+                            teammates.add(tm);
+                        }
 
-                    Map<String, Object> matchData = new LinkedHashMap<>();
-                    matchData.put("matchId",       mid);
-                    matchData.put("participantId", p.path("participantId").asInt(0));
-                    matchData.put("champion",      cname);
-                    matchData.put("win",           isWin);
-                    matchData.put("kills",         k);
-                    matchData.put("deaths",        d);
-                    matchData.put("assists",       a);
-                    matchData.put("kda",  Math.round((k + a) / (double)Math.max(d, 1) * 100.0) / 100.0);
-                    matchData.put("lane", LANE_KO.getOrDefault(pos, pos.isEmpty() ? "?" : pos));
-                    matchData.put("duration", dur / 60 + ":" + String.format("%02d", dur % 60));
-                    matchData.put("durationSec", dur);
-                    matchData.put("items", items);
-                    recentMatches.add(matchData);
+                        Map<String, Object> matchData = new LinkedHashMap<>();
+                        matchData.put("matchId",       mid);
+                        matchData.put("participantId", p.path("participantId").asInt(0));
+                        matchData.put("champion",      cname);
+                        matchData.put("win",           isWin);
+                        matchData.put("kills",         k);
+                        matchData.put("deaths",        d);
+                        matchData.put("assists",       a);
+                        matchData.put("kda",  Math.round((k + a) / (double)Math.max(d, 1) * 100.0) / 100.0);
+                        matchData.put("lane", "사설");
+                        matchData.put("duration", dur / 60 + ":" + String.format("%02d", dur % 60));
+                        matchData.put("durationSec", dur);
+                        matchData.put("items", items);
+                        matchData.put("participants", teammates);
+                        customMatches.add(matchData);
+                    }
+                } else {
+                    // 랭크/일반 게임 통계
+                    if (!pos.isEmpty()) {
+                        laneCounts.merge(pos, 1, Integer::sum);
+                        laneStats.computeIfAbsent(pos, x -> {
+                            Map<String, Integer> m = new HashMap<>();
+                            m.put("w", 0); m.put("l", 0); m.put("n", 0); return m;
+                        });
+                        laneStats.get(pos).merge("n", 1, Integer::sum);
+                        laneStats.get(pos).merge(isWin ? "w" : "l", 1, Integer::sum);
+                    }
+
+                    champStats.computeIfAbsent(cname, x -> {
+                        Map<String, Object> m = new HashMap<>();
+                        m.put("w", 0); m.put("l", 0); m.put("k", 0);
+                        m.put("d", 0); m.put("a", 0); m.put("n", 0); return m;
+                    });
+                    Map<String, Object> cs = champStats.get(cname);
+                    cs.put("n", (Integer)cs.get("n") + 1);
+                    cs.put("k", (Integer)cs.get("k") + k);
+                    cs.put("d", (Integer)cs.get("d") + d);
+                    cs.put("a", (Integer)cs.get("a") + a);
+                    cs.put(isWin ? "w" : "l", (Integer)cs.get(isWin ? "w" : "l") + 1);
+
+                    if (recentMatches.size() < RANKED_LIMIT) {
+                        int dur = minfo.path("gameDuration").asInt(0);
+                        List<Integer> items = new ArrayList<>();
+                        for (int i = 0; i < 7; i++) items.add(p.path("item" + i).asInt(0));
+
+                        Map<String, Object> matchData = new LinkedHashMap<>();
+                        matchData.put("matchId",       mid);
+                        matchData.put("participantId", p.path("participantId").asInt(0));
+                        matchData.put("champion",      cname);
+                        matchData.put("win",           isWin);
+                        matchData.put("kills",         k);
+                        matchData.put("deaths",        d);
+                        matchData.put("assists",       a);
+                        matchData.put("kda",  Math.round((k + a) / (double)Math.max(d, 1) * 100.0) / 100.0);
+                        matchData.put("lane", LANE_KO.getOrDefault(pos, pos.isEmpty() ? "?" : pos));
+                        matchData.put("duration", dur / 60 + ":" + String.format("%02d", dur % 60));
+                        matchData.put("durationSec", dur);
+                        matchData.put("items", items);
+                        recentMatches.add(matchData);
+                    }
                 }
                 break;
             }
@@ -380,6 +450,40 @@ public class RiotApiService {
         resp.put("seasonMost",     seasonMost);
         resp.put("recentMatches",  recentMatches);
         resp.put("totalMatches",   matchIds.size());
+
+        // 사설 게임 데이터
+        List<Map<String, Object>> customMost = customChampStats.entrySet().stream()
+            .sorted((a2, b2) -> (Integer)b2.getValue().get("n") - (Integer)a2.getValue().get("n"))
+            .limit(10)
+            .map(e -> {
+                String cn = e.getKey();
+                Map<String, Object> s = e.getValue();
+                int n  = (Integer) s.get("n");
+                int w  = (Integer) s.get("w");
+                int kk = (Integer) s.get("k");
+                int dd = (Integer) s.get("d");
+                int aa = (Integer) s.get("a");
+                int wr = n > 0 ? (int)Math.round(w * 100.0 / n) : 0;
+                double kda2 = Math.round((kk + aa) / (double)Math.max(dd, 1) * 100.0) / 100.0;
+                Map<String, Object> r = new LinkedHashMap<>();
+                r.put("name", cn); r.put("games", n); r.put("winRate", wr); r.put("kda", kda2);
+                r.put("imgUrl", ddBase + "/img/champion/" + cn + ".png");
+                return r;
+            }).collect(Collectors.toList());
+
+        // 사설 점수 계산 (전적 기반)
+        int customScore = 0;
+        if (!customMatches.isEmpty()) {
+            customScore = estimateUnrankedScore(customMatches);
+        }
+
+        resp.put("customMatches",  customMatches);
+        resp.put("customMost",     customMost);
+        resp.put("customWins",     customWins);
+        resp.put("customLosses",   customLosses);
+        resp.put("customTotal",    customWins + customLosses);
+        resp.put("customScore",    customScore);
+
         return resp;
     }
 
