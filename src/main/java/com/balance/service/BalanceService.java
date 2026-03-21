@@ -17,13 +17,15 @@ public class BalanceService {
     public Map<String, Object> balance(List<Map<String, Object>> players, String mode,
                                        List<List<Integer>> fixedGroups,
                                        List<List<Integer>> separateGroups,
-                                       Map<Integer, String> laneLocks) {
+                                       Map<Integer, String> laneLocks,
+                                       Map<String, List<String>> laneHistory) {
         int n    = players.size();
         int half = n / 2;
 
         if (fixedGroups == null)    fixedGroups    = List.of();
         if (separateGroups == null) separateGroups = List.of();
         if (laneLocks == null)      laneLocks      = Map.of();
+        if (laneHistory == null)    laneHistory    = Map.of();
 
         List<Map<String, Object>> t1Data = new ArrayList<>();
         List<Map<String, Object>> t2Data = new ArrayList<>();
@@ -68,8 +70,8 @@ public class BalanceService {
                     }
                 }
 
-                Object[] t1Assign = getBestAssignment(t1Players, allPerms, t1Locks);
-                Object[] t2Assign = getBestAssignment(t2Players, allPerms, t2Locks);
+                Object[] t1Assign = getBestAssignment(t1Players, allPerms, t1Locks, laneHistory);
+                Object[] t2Assign = getBestAssignment(t2Players, allPerms, t2Locks, laneHistory);
 
                 int    totalM = (int)t1Assign[1] + (int)t2Assign[1];
                 double diff   = Math.abs((double)t1Assign[2] - (double)t2Assign[2]);
@@ -172,8 +174,8 @@ public class BalanceService {
                     int li2 = t2Indices.indexOf(le.getKey());
                     if (li2 >= 0) t2Locks.put(li2, le.getValue());
                 }
-                assignRandomLanes(t1Data, t1Locks);
-                assignRandomLanes(t2Data, t2Locks);
+                assignRandomLanes(t1Data, t1Locks, laneHistory);
+                assignRandomLanes(t2Data, t2Locks, laneHistory);
             }
         }
 
@@ -215,9 +217,11 @@ public class BalanceService {
     }
 
     private Object[] getBestAssignment(List<Map<String, Object>> team, List<int[]> allPerms,
-                                       Map<Integer, String> laneLocks) {
+                                       Map<Integer, String> laneLocks,
+                                       Map<String, List<String>> laneHistory) {
         int    bestM     = -1;
         double bestScore = 0;
+        int    bestHistoryConflicts = Integer.MAX_VALUE;
         List<Object[]> bestAssignment = null;
 
         for (int[] perm : allPerms) {
@@ -235,6 +239,7 @@ public class BalanceService {
 
             int    m     = 0;
             double score = 0;
+            int    historyConflicts = 0;
             for (int i = 0; i < 5; i++) {
                 Map<String, Object> p  = team.get(perm[i]);
                 String lane            = LANES_LIST.get(i);
@@ -246,8 +251,16 @@ public class BalanceService {
                 } else {
                     score += base * 0.80;
                 }
+                // Check lane history conflicts
+                String playerName = getPlayerDisplayName(p);
+                List<String> history = laneHistory.getOrDefault(playerName, List.of());
+                if (history.contains(lane)) historyConflicts++;
             }
-            if (m > bestM) {
+            // Prefer: fewer history conflicts > more primary matches > lower score diff
+            if (historyConflicts < bestHistoryConflicts
+                || (historyConflicts == bestHistoryConflicts && m > bestM)
+                || (historyConflicts == bestHistoryConflicts && m == bestM && score > bestScore)) {
+                bestHistoryConflicts = historyConflicts;
                 bestM     = m;
                 bestScore = score;
                 List<Object[]> assign = new ArrayList<>();
@@ -259,7 +272,8 @@ public class BalanceService {
         return new Object[]{ bestAssignment, bestM, bestScore };
     }
 
-    private void assignRandomLanes(List<Map<String, Object>> team, Map<Integer, String> laneLocks) {
+    private void assignRandomLanes(List<Map<String, Object>> team, Map<Integer, String> laneLocks,
+                                    Map<String, List<String>> laneHistory) {
         // Identify which lanes are already locked
         Set<String> usedLanes = new HashSet<>();
         Set<Integer> lockedPlayers = new HashSet<>();
@@ -272,19 +286,54 @@ public class BalanceService {
                 lockedPlayers.add(idx);
             }
         }
-        // Shuffle remaining lanes for unlocked players
-        List<String> remaining = new ArrayList<>();
+
+        // Remaining lanes and unlocked players
+        List<String> remainingLanes = new ArrayList<>();
         for (String lane : LANES_LIST) {
-            if (!usedLanes.contains(lane)) remaining.add(lane);
+            if (!usedLanes.contains(lane)) remainingLanes.add(lane);
         }
-        Collections.shuffle(remaining);
+        List<Integer> unlockedPlayers = new ArrayList<>();
+        for (int i = 0; i < team.size(); i++) {
+            if (!lockedPlayers.contains(i)) unlockedPlayers.add(i);
+        }
+
+        // Try to find assignment avoiding recent lanes (up to 1000 attempts)
+        List<String> bestAssignment = null;
+        int bestConflicts = Integer.MAX_VALUE;
+
+        for (int attempt = 0; attempt < 1000; attempt++) {
+            Collections.shuffle(remainingLanes);
+            int conflicts = 0;
+            for (int j = 0; j < unlockedPlayers.size() && j < remainingLanes.size(); j++) {
+                int pi = unlockedPlayers.get(j);
+                String lane = remainingLanes.get(j);
+                String playerName = getPlayerDisplayName(team.get(pi));
+                List<String> history = laneHistory.getOrDefault(playerName, List.of());
+                if (history.contains(lane)) conflicts++;
+            }
+            if (conflicts == 0) {
+                bestAssignment = new ArrayList<>(remainingLanes);
+                break;
+            }
+            if (conflicts < bestConflicts) {
+                bestConflicts = conflicts;
+                bestAssignment = new ArrayList<>(remainingLanes);
+            }
+        }
+
+        // Apply best assignment
         int ri = 0;
-        for (int i = 0; i < team.size() && ri < remaining.size(); i++) {
-            if (lockedPlayers.contains(i)) continue;
-            String lane = remaining.get(ri++);
-            team.get(i).put("assignedLane", lane);
-            team.get(i).put("assignedLaneKo", LANE_KO.getOrDefault(lane, lane));
+        for (int i = 0; i < unlockedPlayers.size() && ri < bestAssignment.size(); i++) {
+            int pi = unlockedPlayers.get(i);
+            String lane = bestAssignment.get(ri++);
+            team.get(pi).put("assignedLane", lane);
+            team.get(pi).put("assignedLaneKo", LANE_KO.getOrDefault(lane, lane));
         }
+    }
+
+    private String getPlayerDisplayName(Map<String, Object> player) {
+        Object dn = player.get("displayName");
+        return dn instanceof String ? (String) dn : "";
     }
 
 

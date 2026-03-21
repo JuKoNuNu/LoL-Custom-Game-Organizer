@@ -1306,6 +1306,8 @@ function renderTeams(data) {
     <div class="diff-banner">
       ${bannerText}
       <button class="btn btn-discord" onclick="sendToDiscord()">📢 디코로 결과 전송</button>
+      <button class="btn btn-green" onclick="confirmLaneHistory()" id="btnConfirmLane" style="margin-left:8px">✅ 라인 이력 저장</button>
+      <button class="btn btn-ghost" onclick="clearLaneHistory()" style="margin-left:4px;font-size:0.75rem">🗑 이력 초기화</button>
     </div>
   </div>`;
 }
@@ -1337,6 +1339,43 @@ async function sendToDiscord() {
     alert('오류: ' + e.message);
     btn.textContent = originalText;
     btn.disabled = false;
+  }
+}
+
+async function confirmLaneHistory() {
+  if (!lastTeamData) return;
+  const btn = document.getElementById('btnConfirmLane');
+  btn.disabled = true;
+  btn.textContent = '⏳ 저장 중...';
+  try {
+    const res = await fetch('/api/lane-history/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(lastTeamData)
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.textContent = '✅ 저장 완료!';
+      btn.style.background = '#3ecf78';
+    } else {
+      alert('저장 실패: ' + data.error);
+      btn.textContent = '✅ 라인 이력 저장';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    alert('오류: ' + e.message);
+    btn.textContent = '✅ 라인 이력 저장';
+    btn.disabled = false;
+  }
+}
+
+async function clearLaneHistory() {
+  if (!confirm('라인 이력을 모두 초기화하시겠습니까?')) return;
+  try {
+    await fetch('/api/lane-history', { method: 'DELETE' });
+    alert('라인 이력이 초기화되었습니다.');
+  } catch (e) {
+    alert('오류: ' + e.message);
   }
 }
 
