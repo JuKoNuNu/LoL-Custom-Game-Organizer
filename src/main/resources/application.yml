@@ -24,5 +24,6 @@ spring:
 
 riot:
   api-key: ${RIOT_API_KEY:your_riot_api_key_here}
+  id-token: ${RIOT_ID_TOKEN:}
 discord:
   webhook-url: ${DISCORD_WEBHOOK_URL:your_discord_webhook_url_here}

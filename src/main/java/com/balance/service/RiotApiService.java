@@ -23,6 +23,9 @@ public class RiotApiService {
     @Value("${riot.api-key}")
     private String apiKey;
 
+    @Value("${riot.id-token:}")
+    private String idToken;
+
     public static final String KR   = "https://kr.api.riotgames.com";
     public static final String ASIA = "https://asia.api.riotgames.com";
 
@@ -112,7 +115,64 @@ public class RiotApiService {
         return result;
     }
 
+    public static final String ACS = "https://acs.leagueoflegends.com";
+
     public record RiotResponse(int status, JsonNode body) {}
+
+    /**
+     * ACS API 호출 (사설 전적 조회용) - id_token을 Authorization 헤더에 포함
+     */
+    public RiotResponse acsGet(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", "Bearer " + idToken)
+            .timeout(Duration.ofSeconds(10))
+            .GET().build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        int status = response.statusCode();
+        JsonNode body = null;
+        String bodyStr = response.body();
+        if (bodyStr != null && !bodyStr.isBlank()) {
+            try { body = objectMapper.readTree(bodyStr); } catch (Exception ignored) {}
+        }
+        System.out.println("[ACS] " + url + " → " + status);
+        return new RiotResponse(status, body);
+    }
+
+    /**
+     * ACS API로 사설 게임 매치 ID 목록 조회
+     * @param summonerId 소환사의 numeric ID (PVPNET_ID_KR)
+     * @param count 가져올 매치 수
+     * @return 사설 게임 매치 ID 리스트 (KR_ 접두사 포함)
+     */
+    public List<String> fetchCustomMatchIds(long summonerId, int count) {
+        List<String> matchIds = new ArrayList<>();
+        if (idToken == null || idToken.isBlank()) {
+            System.out.println("[ACS] id_token이 설정되지 않아 사설 전적 조회를 건너뜁니다.");
+            return matchIds;
+        }
+        try {
+            String url = ACS + "/v1/stats/player_history/KR/" + summonerId
+                + "?begIndex=0&endIndex=" + count + "&queue=0";
+            RiotResponse resp = acsGet(url);
+            if (resp.status() == 200 && resp.body() != null) {
+                JsonNode games = resp.body().path("games").path("games");
+                if (games.isArray()) {
+                    for (JsonNode game : games) {
+                        long gameId = game.path("gameId").asLong(0);
+                        if (gameId > 0) {
+                            matchIds.add("KR_" + gameId);
+                        }
+                    }
+                }
+                System.out.println("[ACS] 사설 매치 " + matchIds.size() + "개 발견 (summonerId=" + summonerId + ")");
+            }
+        } catch (Exception e) {
+            System.out.println("[ACS] 사설 전적 조회 실패: " + e.getMessage());
+        }
+        return matchIds;
+    }
 
     public RiotResponse rget(String url) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
@@ -208,10 +268,15 @@ public class RiotApiService {
             if ("RANKED_FLEX_SR".equals(queueType))  flex = entry;
         }
 
-        // 매치 ID를 최대 100개 가져옴 (랭크 + 사설 충분히 확보)
+        // 소환사 ID (ACS 사설 전적 조회용)
+        long summonerId = summ.path("id") != null && !summ.path("id").asText("").isEmpty()
+            ? 0 : 0; // summoner API의 id는 encrypted string이므로 accountId 사용
+        String summonerIdStr = summ.path("id").asText("");
+
+        // ── 1) 랭크/일반 매치 (Riot 공식 API)
         List<String> matchIds = new ArrayList<>();
         RiotResponse matchIdsResp = rget(
-            ASIA + "/lol/match/v5/matches/by-puuid/" + puuid + "/ids?count=100");
+            ASIA + "/lol/match/v5/matches/by-puuid/" + puuid + "/ids?count=20");
         if (matchIdsResp.status() == 200 && matchIdsResp.body() != null && matchIdsResp.body().isArray()) {
             matchIdsResp.body().forEach(id -> matchIds.add(id.asText()));
         }
@@ -223,14 +288,9 @@ public class RiotApiService {
         Map<String, Map<String, Object>> champStats  = new HashMap<>();
         List<Map<String, Object>> recentMatches = new ArrayList<>();
 
-        // 사설 게임 데이터
-        Map<String, Map<String, Object>> customChampStats = new HashMap<>();
-        List<Map<String, Object>> customMatches = new ArrayList<>();
-        int customWins = 0, customLosses = 0;
-
+        // 랭크/일반 매치 처리
         for (String mid : matchIds) {
-            // 랭크/사설 둘 다 충분하면 중단
-            if (recentMatches.size() >= RANKED_LIMIT && customMatches.size() >= CUSTOM_LIMIT) break;
+            if (recentMatches.size() >= RANKED_LIMIT) break;
 
             RiotResponse matchResp = rget(ASIA + "/lol/match/v5/matches/" + mid);
             if (matchResp.status() != 200 || matchResp.body() == null) continue;
@@ -241,7 +301,7 @@ public class RiotApiService {
             int queueId = minfo.path("queueId").asInt(-1);
             String gameType = minfo.path("gameType").asText("");
             boolean isCustom = (queueId == 0 || "CUSTOM_GAME".equals(gameType));
-            System.out.println("[Match] " + mid + " queueId=" + queueId + " gameType=" + gameType + " custom=" + isCustom);
+            if (isCustom) continue; // 사설은 ACS에서 별도 처리
 
             for (JsonNode p : minfo.path("participants")) {
                 if (!puuid.equals(p.path("puuid").asText())) continue;
@@ -253,102 +313,134 @@ public class RiotApiService {
                 int d = p.path("deaths").asInt(0);
                 int a = p.path("assists").asInt(0);
 
-                if (isCustom) {
-                    // 사설 게임 통계
-                    if (isWin) customWins++; else customLosses++;
-                    customChampStats.computeIfAbsent(cname, x -> {
-                        Map<String, Object> m = new HashMap<>();
-                        m.put("w", 0); m.put("l", 0); m.put("k", 0);
-                        m.put("d", 0); m.put("a", 0); m.put("n", 0); return m;
+                if (!pos.isEmpty()) {
+                    laneCounts.merge(pos, 1, Integer::sum);
+                    laneStats.computeIfAbsent(pos, x -> {
+                        Map<String, Integer> m = new HashMap<>();
+                        m.put("w", 0); m.put("l", 0); m.put("n", 0); return m;
                     });
-                    Map<String, Object> ccs = customChampStats.get(cname);
-                    ccs.put("n", (Integer)ccs.get("n") + 1);
-                    ccs.put("k", (Integer)ccs.get("k") + k);
-                    ccs.put("d", (Integer)ccs.get("d") + d);
-                    ccs.put("a", (Integer)ccs.get("a") + a);
-                    ccs.put(isWin ? "w" : "l", (Integer)ccs.get(isWin ? "w" : "l") + 1);
-
-                    if (customMatches.size() < CUSTOM_LIMIT) {
-                        int dur = minfo.path("gameDuration").asInt(0);
-                        List<Integer> items = new ArrayList<>();
-                        for (int i = 0; i < 7; i++) items.add(p.path("item" + i).asInt(0));
-
-                        // 사설 게임 참가자 목록
-                        List<Map<String, Object>> teammates = new ArrayList<>();
-                        for (JsonNode pp : minfo.path("participants")) {
-                            Map<String, Object> tm = new LinkedHashMap<>();
-                            tm.put("gameName", pp.path("riotIdGameName").asText(""));
-                            tm.put("tagLine", pp.path("riotIdTagline").asText(""));
-                            tm.put("champion", pp.path("championName").asText(""));
-                            tm.put("team", pp.path("teamId").asInt(0));
-                            tm.put("kills", pp.path("kills").asInt(0));
-                            tm.put("deaths", pp.path("deaths").asInt(0));
-                            tm.put("assists", pp.path("assists").asInt(0));
-                            tm.put("win", pp.path("win").asBoolean(false));
-                            teammates.add(tm);
-                        }
-
-                        Map<String, Object> matchData = new LinkedHashMap<>();
-                        matchData.put("matchId",       mid);
-                        matchData.put("participantId", p.path("participantId").asInt(0));
-                        matchData.put("champion",      cname);
-                        matchData.put("win",           isWin);
-                        matchData.put("kills",         k);
-                        matchData.put("deaths",        d);
-                        matchData.put("assists",       a);
-                        matchData.put("kda",  Math.round((k + a) / (double)Math.max(d, 1) * 100.0) / 100.0);
-                        matchData.put("lane", "사설");
-                        matchData.put("duration", dur / 60 + ":" + String.format("%02d", dur % 60));
-                        matchData.put("durationSec", dur);
-                        matchData.put("items", items);
-                        matchData.put("participants", teammates);
-                        customMatches.add(matchData);
-                    }
-                } else {
-                    // 랭크/일반 게임 통계
-                    if (!pos.isEmpty()) {
-                        laneCounts.merge(pos, 1, Integer::sum);
-                        laneStats.computeIfAbsent(pos, x -> {
-                            Map<String, Integer> m = new HashMap<>();
-                            m.put("w", 0); m.put("l", 0); m.put("n", 0); return m;
-                        });
-                        laneStats.get(pos).merge("n", 1, Integer::sum);
-                        laneStats.get(pos).merge(isWin ? "w" : "l", 1, Integer::sum);
-                    }
-
-                    champStats.computeIfAbsent(cname, x -> {
-                        Map<String, Object> m = new HashMap<>();
-                        m.put("w", 0); m.put("l", 0); m.put("k", 0);
-                        m.put("d", 0); m.put("a", 0); m.put("n", 0); return m;
-                    });
-                    Map<String, Object> cs = champStats.get(cname);
-                    cs.put("n", (Integer)cs.get("n") + 1);
-                    cs.put("k", (Integer)cs.get("k") + k);
-                    cs.put("d", (Integer)cs.get("d") + d);
-                    cs.put("a", (Integer)cs.get("a") + a);
-                    cs.put(isWin ? "w" : "l", (Integer)cs.get(isWin ? "w" : "l") + 1);
-
-                    if (recentMatches.size() < RANKED_LIMIT) {
-                        int dur = minfo.path("gameDuration").asInt(0);
-                        List<Integer> items = new ArrayList<>();
-                        for (int i = 0; i < 7; i++) items.add(p.path("item" + i).asInt(0));
-
-                        Map<String, Object> matchData = new LinkedHashMap<>();
-                        matchData.put("matchId",       mid);
-                        matchData.put("participantId", p.path("participantId").asInt(0));
-                        matchData.put("champion",      cname);
-                        matchData.put("win",           isWin);
-                        matchData.put("kills",         k);
-                        matchData.put("deaths",        d);
-                        matchData.put("assists",       a);
-                        matchData.put("kda",  Math.round((k + a) / (double)Math.max(d, 1) * 100.0) / 100.0);
-                        matchData.put("lane", LANE_KO.getOrDefault(pos, pos.isEmpty() ? "?" : pos));
-                        matchData.put("duration", dur / 60 + ":" + String.format("%02d", dur % 60));
-                        matchData.put("durationSec", dur);
-                        matchData.put("items", items);
-                        recentMatches.add(matchData);
-                    }
+                    laneStats.get(pos).merge("n", 1, Integer::sum);
+                    laneStats.get(pos).merge(isWin ? "w" : "l", 1, Integer::sum);
                 }
+
+                champStats.computeIfAbsent(cname, x -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("w", 0); m.put("l", 0); m.put("k", 0);
+                    m.put("d", 0); m.put("a", 0); m.put("n", 0); return m;
+                });
+                Map<String, Object> cs = champStats.get(cname);
+                cs.put("n", (Integer)cs.get("n") + 1);
+                cs.put("k", (Integer)cs.get("k") + k);
+                cs.put("d", (Integer)cs.get("d") + d);
+                cs.put("a", (Integer)cs.get("a") + a);
+                cs.put(isWin ? "w" : "l", (Integer)cs.get(isWin ? "w" : "l") + 1);
+
+                if (recentMatches.size() < RANKED_LIMIT) {
+                    int dur = minfo.path("gameDuration").asInt(0);
+                    List<Integer> items = new ArrayList<>();
+                    for (int i = 0; i < 7; i++) items.add(p.path("item" + i).asInt(0));
+
+                    Map<String, Object> matchData = new LinkedHashMap<>();
+                    matchData.put("matchId",       mid);
+                    matchData.put("participantId", p.path("participantId").asInt(0));
+                    matchData.put("champion",      cname);
+                    matchData.put("win",           isWin);
+                    matchData.put("kills",         k);
+                    matchData.put("deaths",        d);
+                    matchData.put("assists",       a);
+                    matchData.put("kda",  Math.round((k + a) / (double)Math.max(d, 1) * 100.0) / 100.0);
+                    matchData.put("lane", LANE_KO.getOrDefault(pos, pos.isEmpty() ? "?" : pos));
+                    matchData.put("duration", dur / 60 + ":" + String.format("%02d", dur % 60));
+                    matchData.put("durationSec", dur);
+                    matchData.put("items", items);
+                    recentMatches.add(matchData);
+                }
+                break;
+            }
+        }
+
+        // ── 2) 사설 매치 (ACS API로 매치 ID 확보 → Riot API로 상세 조회)
+        Map<String, Map<String, Object>> customChampStats = new HashMap<>();
+        List<Map<String, Object>> customMatches = new ArrayList<>();
+        int customWins = 0, customLosses = 0;
+
+        // ACS에서 사설 매치 ID 가져오기 (본인 계정의 summonerId 사용)
+        // id_token의 PVPNET_ID는 로그인 계정 기준이므로, 검색 대상의 accountId로 조회
+        // ACS는 summonerId(=accountId numeric)가 필요 → summoner API의 accountId에서 추출 시도
+        List<String> customMatchIds = new ArrayList<>();
+        if (idToken != null && !idToken.isBlank()) {
+            // JWT에서 PVPNET_ID 추출 (로그인 계정의 사설 전적으로 매치 ID 확보)
+            long pvpnetId = extractPvpnetIdFromToken(idToken);
+            if (pvpnetId > 0) {
+                customMatchIds = fetchCustomMatchIds(pvpnetId, CUSTOM_LIMIT);
+            }
+        }
+
+        for (String mid : customMatchIds) {
+            if (customMatches.size() >= CUSTOM_LIMIT) break;
+
+            RiotResponse matchResp = rget(ASIA + "/lol/match/v5/matches/" + mid);
+            if (matchResp.status() != 200 || matchResp.body() == null) continue;
+
+            JsonNode minfo = matchResp.body().get("info");
+            if (minfo == null) continue;
+
+            for (JsonNode p : minfo.path("participants")) {
+                if (!puuid.equals(p.path("puuid").asText())) continue;
+
+                String cname  = p.path("championName").asText("Unknown");
+                boolean isWin = p.path("win").asBoolean(false);
+                int k = p.path("kills").asInt(0);
+                int d = p.path("deaths").asInt(0);
+                int a = p.path("assists").asInt(0);
+
+                if (isWin) customWins++; else customLosses++;
+                customChampStats.computeIfAbsent(cname, x -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("w", 0); m.put("l", 0); m.put("k", 0);
+                    m.put("d", 0); m.put("a", 0); m.put("n", 0); return m;
+                });
+                Map<String, Object> ccs = customChampStats.get(cname);
+                ccs.put("n", (Integer)ccs.get("n") + 1);
+                ccs.put("k", (Integer)ccs.get("k") + k);
+                ccs.put("d", (Integer)ccs.get("d") + d);
+                ccs.put("a", (Integer)ccs.get("a") + a);
+                ccs.put(isWin ? "w" : "l", (Integer)ccs.get(isWin ? "w" : "l") + 1);
+
+                int dur = minfo.path("gameDuration").asInt(0);
+                List<Integer> items = new ArrayList<>();
+                for (int i = 0; i < 7; i++) items.add(p.path("item" + i).asInt(0));
+
+                // 사설 게임 참가자 목록
+                List<Map<String, Object>> teammates = new ArrayList<>();
+                for (JsonNode pp : minfo.path("participants")) {
+                    Map<String, Object> tm = new LinkedHashMap<>();
+                    tm.put("gameName", pp.path("riotIdGameName").asText(""));
+                    tm.put("tagLine", pp.path("riotIdTagline").asText(""));
+                    tm.put("champion", pp.path("championName").asText(""));
+                    tm.put("team", pp.path("teamId").asInt(0));
+                    tm.put("kills", pp.path("kills").asInt(0));
+                    tm.put("deaths", pp.path("deaths").asInt(0));
+                    tm.put("assists", pp.path("assists").asInt(0));
+                    tm.put("win", pp.path("win").asBoolean(false));
+                    teammates.add(tm);
+                }
+
+                Map<String, Object> matchData = new LinkedHashMap<>();
+                matchData.put("matchId",       mid);
+                matchData.put("participantId", p.path("participantId").asInt(0));
+                matchData.put("champion",      cname);
+                matchData.put("win",           isWin);
+                matchData.put("kills",         k);
+                matchData.put("deaths",        d);
+                matchData.put("assists",       a);
+                matchData.put("kda",  Math.round((k + a) / (double)Math.max(d, 1) * 100.0) / 100.0);
+                matchData.put("lane", "사설");
+                matchData.put("duration", dur / 60 + ":" + String.format("%02d", dur % 60));
+                matchData.put("durationSec", dur);
+                matchData.put("items", items);
+                matchData.put("participants", teammates);
+                customMatches.add(matchData);
                 break;
             }
         }
@@ -561,6 +653,27 @@ public class RiotApiService {
         }
         events.sort(Comparator.comparingInt(e -> (Integer) e.get("minute")));
         return events;
+    }
+
+    /**
+     * JWT id_token에서 PVPNET_ID_KR (lol[0].uid) 추출
+     */
+    private long extractPvpnetIdFromToken(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) return 0;
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            JsonNode jwt = objectMapper.readTree(payload);
+            JsonNode lol = jwt.path("lol");
+            if (lol.isArray() && lol.size() > 0) {
+                long uid = lol.get(0).path("uid").asLong(0);
+                System.out.println("[JWT] PVPNET_ID_KR 추출: " + uid);
+                return uid;
+            }
+        } catch (Exception e) {
+            System.out.println("[JWT] id_token 파싱 실패: " + e.getMessage());
+        }
+        return 0;
     }
 
     public static class NotFoundException extends RuntimeException {
