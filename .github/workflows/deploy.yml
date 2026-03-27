@@ -34,19 +34,20 @@ jobs:
         - name: Restart Application
           uses: appleboy/ssh-action@v1.0.3
           with:
-            host: ${{ secrets.EC2_HOST }}
-            username: ec2-user
-            key: ${{ secrets.EC2_SSH_KEY }}
-            script: |
-              ps -ef | grep app.jar | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
-              sleep 2
-              cd ~/app
-              nohup java -jar app.jar > ~/app.log 2>&1 &
-              sleep 5
-              if ps -ef | grep app.jar | grep -v grep > /dev/null; then
-                echo "Application started successfully"
-              else
-                echo "Application failed to start"
-                tail -20 ~/app.log
-                exit 1
-              fi
+              host: ${{ secrets.EC2_HOST }}
+              username: ec2-user
+              key: ${{ secrets.EC2_SSH_KEY }}
+              script: |
+                ps -ef | grep app.jar | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+                sleep 2
+                cd ~/app
+                source ~/app/env.sh
+                nohup java -jar app.jar > ~/app.log 2>&1 &
+                sleep 5
+                if ps -ef | grep app.jar | grep -v grep > /dev/null; then
+                  echo "Application started successfully"
+                else
+                  echo "Application failed to start"
+                  tail -20 ~/app.log
+                  exit 1
+                fi
