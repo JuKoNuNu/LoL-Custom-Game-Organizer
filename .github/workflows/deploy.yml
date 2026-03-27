@@ -16,8 +16,10 @@ jobs:
             distribution: 'temurin'
             java-version: '21'
 
-        - name: Build JAR
-          run: ./gradlew bootJar
+          - name: Build JAR
+            run: |
+              chmod +x ./gradlew
+              ./gradlew bootJar
 
         - name: Upload JAR to EC2
           uses: appleboy/scp-action@v0.1.7
