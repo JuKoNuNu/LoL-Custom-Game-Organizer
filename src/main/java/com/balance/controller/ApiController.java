@@ -119,16 +119,19 @@ public class ApiController {
                     laneLocks.put(Integer.parseInt(e.getKey().toString()), e.getValue().toString());
                 }
             }
-            // 최근 3판 라인 이력 조회
-            int avoidCount = 3;
-            if (body.containsKey("laneAvoidCount")) {
-                avoidCount = ((Number) body.get("laneAvoidCount")).intValue();
+            // pure_random 모드는 DB 라인 이력 조회 불필요
+            Map<String, List<String>> laneHistory = Map.of();
+            if (!"pure_random".equals(mode)) {
+                int avoidCount = 3;
+                if (body.containsKey("laneAvoidCount")) {
+                    avoidCount = ((Number) body.get("laneAvoidCount")).intValue();
+                }
+                List<String> displayNames = players.stream()
+                    .map(p -> (String) p.get("displayName"))
+                    .filter(Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toList());
+                laneHistory = laneHistoryService.getRecentHistory(displayNames, avoidCount);
             }
-            List<String> displayNames = players.stream()
-                .map(p -> (String) p.get("displayName"))
-                .filter(Objects::nonNull)
-                .collect(java.util.stream.Collectors.toList());
-            Map<String, List<String>> laneHistory = laneHistoryService.getRecentHistory(displayNames, avoidCount);
 
             return ResponseEntity.ok(balanceService.balance(players, mode, fixedGroups, separateGroups, laneLocks, laneHistory));
         } catch (Exception e) {
@@ -143,8 +146,9 @@ public class ApiController {
         try {
             boolean success = discordService.sendTeamResult(body);
 
-            // 디코 전송 성공 시 라인 이력 자동 저장
-            if (success) {
+            // 디코 전송 성공 시 라인 이력 자동 저장 (순수 랜덤은 저장 안 함)
+            String mode = (String) body.getOrDefault("mode", "balance");
+            if (success && !"pure_random".equals(mode)) {
                 Map<String, String> assignments = new HashMap<>();
                 List<Map<String, Object>> team1 = (List<Map<String, Object>>) body.get("team1");
                 List<Map<String, Object>> team2 = (List<Map<String, Object>>) body.get("team2");

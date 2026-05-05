@@ -29,19 +29,23 @@ public class DiscordService {
         List<Map<String, Object>> team1 = (List<Map<String, Object>>) data.getOrDefault("team1", List.of());
         List<Map<String, Object>> team2 = (List<Map<String, Object>>) data.getOrDefault("team2", List.of());
         Object scoreDiff = data.getOrDefault("scoreDiff", 0);
+        String mode = (String) data.getOrDefault("mode", "balance");
+        boolean isPureRandom = "pure_random".equals(mode);
 
         Map<String, Object> embed = new LinkedHashMap<>();
-        embed.put("title", "⚔ 팀 구성 결과");
+        embed.put("title", isPureRandom ? "🎲 순수 랜덤 팀 구성 결과" : "⚔ 팀 구성 결과");
         embed.put("color", 0xc8a84b);
 
         List<Map<String, Object>> fields = new ArrayList<>();
-        fields.add(Map.of("name", "🔵 팀 1", "value", formatTeam(team1), "inline", false));
-        fields.add(Map.of("name", "🔴 팀 2", "value", formatTeam(team2), "inline", false));
-        fields.add(Map.of("name", "📊 분석",
-            "value", "점수 차이: **" + formatNumber(scoreDiff) + "pt**", "inline", false));
+        fields.add(Map.of("name", "🔵 팀 1", "value", isPureRandom ? formatTeamNamesOnly(team1) : formatTeam(team1), "inline", false));
+        fields.add(Map.of("name", "🔴 팀 2", "value", isPureRandom ? formatTeamNamesOnly(team2) : formatTeam(team2), "inline", false));
+        if (!isPureRandom) {
+            fields.add(Map.of("name", "📊 분석",
+                "value", "점수 차이: **" + formatNumber(scoreDiff) + "pt**", "inline", false));
+        }
 
         embed.put("fields", fields);
-        embed.put("footer", Map.of("text", "내전 밸런스 메이커 by Gemini"));
+        embed.put("footer", Map.of("text", "내전 밸런스 메이커"));
 
         String json = objectMapper.writeValueAsString(Map.of("embeds", List.of(embed)));
         System.out.println("[Discord] Sending webhook, payload size: " + json.length() + " bytes");
@@ -78,6 +82,17 @@ public class DiscordService {
             sb.append("**[").append(lane).append("]** ")
               .append(gameName).append(" (").append(tierStr)
               .append(") - `").append(formatNumber(p.getOrDefault("score", 0))).append("pt`");
+        }
+        return sb.toString();
+    }
+
+    private String formatTeamNamesOnly(List<Map<String, Object>> team) {
+        if (team.isEmpty()) return "없음";
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> p : team) {
+            String gameName = (String) p.getOrDefault("gameName", "");
+            if (sb.length() > 0) sb.append("\n");
+            sb.append(gameName);
         }
         return sb.toString();
     }

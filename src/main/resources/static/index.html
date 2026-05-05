@@ -504,6 +504,7 @@ section { margin-top: 28px; }
     <div class="toggle-grid" id="toggleGrid"></div>
     <div class="balance-controls">
       <button class="btn btn-green" onclick="balanceTeams('balance')">⚖ 밸런스 팀 짜기</button>
+      <button class="btn btn-ghost" style="padding:11px 18px" onclick="balanceTeams('pure_random')">🎲 순수 랜덤</button>
       <button class="btn btn-ghost" style="padding:11px 18px" onclick="balanceTeams('random')">🎲 완전 랜덤</button>
       <button class="btn btn-ghost" style="padding:11px 18px" onclick="balanceTeams('random_lane')">🔀 랜덤 + 라인배정</button>
       <span class="sel-count" id="selCount"></span>
@@ -1308,6 +1309,16 @@ function renderTeams(data) {
   lastTeamData = data;
 
   function playerRow(p) {
+    if (mode === 'pure_random') {
+      return `
+      <div class="team-player">
+        <img class="team-icon" src="${p.iconUrl}"
+          onerror="this.src='https://ddragon.leagueoflegends.com/cdn/15.4.1/img/profileicon/29.png'" alt="">
+        <div class="team-player-info">
+          <div class="team-player-name">${p.gameName}</div>
+        </div>
+      </div>`;
+    }
     const r     = p.solo || p.flex || p.highestRank;
     const color = tc(r?.tier);
     // 랜덤 라인 배정인 경우 할당된 라인을 강조해서 표시
@@ -1333,6 +1344,13 @@ function renderTeams(data) {
   }
 
   function teamCard(players, cls, label, score) {
+    if (mode === 'pure_random') {
+      return `
+      <div class="team-card ${cls}">
+        <div class="team-head"><span>${label}</span></div>
+        ${players.map(playerRow).join('')}
+      </div>`;
+    }
     const wr = players.reduce((s, p) => s + ((p.solo || p.flex || p.highestRank)?.wins || 0), 0);
     const lr = players.reduce((s, p) => s + ((p.solo || p.flex || p.highestRank)?.losses || 0), 0);
     const avg = players.length ? Math.round(score / players.length) : 0;
@@ -1356,6 +1374,8 @@ function renderTeams(data) {
   let bannerText = `점수 차이: <strong>${scoreDiff.toLocaleString()}pt</strong> (${diffPct}%)`;
   if (mode === 'balance') {
     bannerText += ` &nbsp;·&nbsp; ${laneBalanced ? '<span style="color:#3ecf78">라인 밸런스 완료 ✓</span>' : '<span style="color:#e8c86b">라인 불균형 주의</span>'}`;
+  } else if (mode === 'pure_random') {
+    bannerText = `🎲 <strong>순수 랜덤 배정</strong> 결과입니다. (라인 이력 미사용)`;
   } else if (mode === 'random') {
     bannerText = `🎲 <strong>완전 랜덤 배정</strong> 결과입니다.`;
   } else {

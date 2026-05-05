@@ -142,6 +142,22 @@ public class BalanceService {
             for (int i : t1I) t1Data.add(new LinkedHashMap<>(players.get(i)));
             for (int i : t2I) t2Data.add(new LinkedHashMap<>(players.get(i)));
 
+        } else if ("pure_random".equals(mode)) {
+            // Pure random: just shuffle and split, no lane assignment, no DB history
+            List<Integer> indices = new ArrayList<>();
+            for (int i = 0; i < n; i++) indices.add(i);
+
+            for (int attempt = 0; attempt < 1000; attempt++) {
+                Collections.shuffle(indices);
+                Set<Integer> team1Set = new HashSet<>(indices.subList(0, half));
+                if (isValidSplit(team1Set, n, fixedGroups, separateGroups)) break;
+            }
+
+            for (int i : indices.subList(0, half)) t1Data.add(new LinkedHashMap<>(players.get(i)));
+            for (int i : indices.subList(half, n))  t2Data.add(new LinkedHashMap<>(players.get(i)));
+            s1 = t1Data.stream().mapToDouble(this::getScore).sum();
+            s2 = t2Data.stream().mapToDouble(this::getScore).sum();
+
         } else {
             // Random mode with constraints
             List<Integer> indices = new ArrayList<>();
